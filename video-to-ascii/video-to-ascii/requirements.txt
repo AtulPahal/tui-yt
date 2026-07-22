@@ -1,8 +1,0 @@
-yt-dlp
-opencv-python
-sty
-cursor
-pillow
-mss
-pynput
-questionary
