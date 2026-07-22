@@ -106,7 +106,7 @@ def download_youtube_video(url: str, progress_hook=None) -> str:
 
 # --- Helper Logic: Video Playback ---
 class MockArgs:
-    def __init__(self, url, video_mode, no_audio, chars_charset):
+    def __init__(self, url, video_mode, no_audio, chars_charset, format_height=480):
         self.vid = url
         self.framerate = 30
         self.buffer = 0.0
@@ -122,6 +122,7 @@ class MockArgs:
         self.contrast = 1.0
         self.brightness = 1.0
         self.dither = "none"
+        self.format_height = format_height
 
 def flush_input():
     try:
@@ -137,8 +138,8 @@ def flush_input():
     except ImportError:
         pass
 
-def play_video(url: str, video_mode: bool, no_audio: bool, chars_charset: str):
-    args = MockArgs(url, video_mode, no_audio, chars_charset)
+def play_video(url: str, video_mode: bool, no_audio: bool, chars_charset: str, format_height: int = 480):
+    args = MockArgs(url, video_mode, no_audio, chars_charset, format_height)
     
     # Hide cursor and run player
     cursor.hide()
@@ -218,6 +219,8 @@ class YouTubeTUI:
         self.no_audio = False
         self.chars_charset = "standard"
         self.status_message = "Ready. Type a query above and press Enter to search."
+        self.quality = 480
+        self.quality_options = [144, 240, 360, 480, 720, 1080]
         self.is_playing = False
         self.current_thumbnail_ansi = ANSI("No video selected.")
         self.current_fetch_task = None
@@ -267,7 +270,7 @@ class YouTubeTUI:
         
         self.footer = Window(
             content=FormattedTextControl(
-                lambda: [("class:footer", " [Tab] Focus | [v] Toggle Video | [a] Toggle Audio | [Enter] Play | [d] Download | [Esc/q] Exit")]
+                lambda: [("class:footer", " [Tab] Focus | [v] Video | [a] Audio | [r] Quality | [Enter] Play | [d] Download | [Esc/q] Exit")]
             ),
             height=1,
             style="class:footer-bg"
@@ -320,7 +323,7 @@ class YouTubeTUI:
     def get_status_text(self):
         v_mode = "ON (Coloured Blocks)" if self.video_mode else "OFF (ASCII Chars)"
         a_mode = "PLAY" if not self.no_audio else "MUTED"
-        return f" Video Mode: {v_mode} | Audio: {a_mode} | Status: {self.status_message}"
+        return f" Video Mode: {v_mode} | Audio: {a_mode} | Quality: {self.quality}p | Status: {self.status_message}"
 
     def setup_keybindings(self):
         from prompt_toolkit.filters import has_focus
@@ -373,6 +376,13 @@ class YouTubeTUI:
             self.no_audio = not self.no_audio
             event.app.invalidate()
 
+        @self.kb.add("r", filter=is_results_focused)
+        def _cycle_quality(event):
+            idx = self.quality_options.index(self.quality)
+            self.quality = self.quality_options[(idx + 1) % len(self.quality_options)]
+            self.status_message = f"Video quality set to {self.quality}p"
+            event.app.invalidate()
+
         @self.kb.add("enter", filter=is_results_focused)
         def _enter_results(event):
             if self.results:
@@ -392,7 +402,8 @@ class YouTubeTUI:
                                 url=url,
                                 video_mode=self.video_mode,
                                 no_audio=self.no_audio,
-                                chars_charset=self.chars_charset
+                                chars_charset=self.chars_charset,
+                                format_height=self.quality
                             )
                         )
                     finally:
