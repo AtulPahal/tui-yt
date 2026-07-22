@@ -1,0 +1,9 @@
+frames/
+__pycache__/
+*.pyc
+.DS_Store
+video
+video.mp4
+test_video.mp4
+.venv/
+local:

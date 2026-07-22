@@ -1,0 +1,12 @@
+LICENSE
+README.md
+pyproject.toml
+tests/test_audio_controls.py
+tests/test_core.py
+tests/test_fixes.py
+tests/test_renderers.py
+video_to_ascii.egg-info/PKG-INFO
+video_to_ascii.egg-info/SOURCES.txt
+video_to_ascii.egg-info/dependency_links.txt
+video_to_ascii.egg-info/requires.txt
+video_to_ascii.egg-info/top_level.txt
