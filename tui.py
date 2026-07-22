@@ -8,7 +8,7 @@ import asyncio
 import re
 
 # Ensure the sibling module can be imported
-sys.path.insert(0, "/Users/atulpahal/github/video-to-ascii")
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "video-to-ascii"))
 from video_render import ASCIIVideoPlayer
 
 from prompt_toolkit.application import Application, run_in_terminal
@@ -270,7 +270,7 @@ class YouTubeTUI:
         
         self.footer = Window(
             content=FormattedTextControl(
-                lambda: [("class:footer", " [Tab] Focus | [v] Video | [a] Audio | [r] Quality | [Enter] Play | [d] Download | [Esc/q] Exit")]
+                lambda: [("class:footer", " [Tab]Focus [v]Vid [a]Aud [r]Qual [Enter]Play [d]DL [Esc/q]Exit")]
             ),
             height=1,
             style="class:footer-bg"
@@ -321,9 +321,9 @@ class YouTubeTUI:
         self.preview_window.height = Dimension(preferred=h, min=h)
 
     def get_status_text(self):
-        v_mode = "ON (Coloured Blocks)" if self.video_mode else "OFF (ASCII Chars)"
-        a_mode = "PLAY" if not self.no_audio else "MUTED"
-        return f" Video Mode: {v_mode} | Audio: {a_mode} | Quality: {self.quality}p | Status: {self.status_message}"
+        v = "ON" if self.video_mode else "OFF"
+        a = "PLAY" if not self.no_audio else "MUTED"
+        return f"V:{v} | A:{a} | Q:{self.quality}p | {self.status_message}"
 
     def setup_keybindings(self):
         from prompt_toolkit.filters import has_focus

@@ -529,13 +529,13 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "prompt-toolkit", specifier = ">=3.0.52" },
-    { name = "video-to-ascii", directory = "../video-to-ascii" },
+    { name = "video-to-ascii", directory = "video-to-ascii" },
 ]
 
 [[package]]
 name = "video-to-ascii"
 version = "1.1.0"
-source = { directory = "../video-to-ascii" }
+source = { directory = "video-to-ascii" }
 dependencies = [
     { name = "cursor" },
     { name = "mss" },
