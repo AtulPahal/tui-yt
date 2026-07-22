@@ -1,0 +1,12 @@
+[project]
+name = "tui-yt"
+version = "1.0.0"
+description = "A terminal UI for YouTube using video-to-ascii"
+requires-python = ">=3.10"
+dependencies = [
+    "prompt-toolkit>=3.0.52",
+    "video-to-ascii",
+]
+
+[tool.uv.sources]
+video-to-ascii = { path = "../video-to-ascii" }
