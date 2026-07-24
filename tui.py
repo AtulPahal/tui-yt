@@ -32,13 +32,10 @@ try:
     from prompt_toolkit.styles import Style
 except ImportError:
     print("Error: 'prompt-toolkit' is not installed. Run 'uv pip install prompt-toolkit'.")
-    sys.exit(1)
-
 try:
-    from video_player import ASCIIVideoPlayer
     import cursor
-except ImportError as e:
-    print(f"Error importing internal video_player module: {e}")
+except ImportError:
+    print("Error: 'cursor' is not installed. Run: uv pip install cursor")
     sys.exit(1)
 
 
@@ -188,10 +185,11 @@ def flush_stdin():
                 msvcrt.getch()
     except Exception:
         pass
-
-def play_video(url: str, video_mode: bool, no_audio: bool, chars_charset: str, quality: str = "720p"):
+def play_video(url: str, video_mode: bool, no_audio: bool, chars_charset: str, quality: str = "720p", title: str | None = None):
+    from video_player import ASCIIVideoPlayer
     args = MockArgs(url, video_mode, no_audio, chars_charset, quality=quality)
-    # Hide cursor and run player
+    if title:
+        args.title = title
     cursor.hide()
     player = ASCIIVideoPlayer(args)
     try:
@@ -200,9 +198,8 @@ def play_video(url: str, video_mode: bool, no_audio: bool, chars_charset: str, q
         print(f"\nError during video playback: {e}")
         time.sleep(2)
     finally:
-        # Clean up and restore cursor/screen state
         cursor.show()
-        print("\033[2J\033[H", end="", flush=True)  # Clear screen and reset cursor home
+        print("\033[2J\033[H", end="", flush=True)
         flush_stdin()
 # Custom ANSI wrapper that exposes .value (expected by test)
 class ThumbnailANSI(ANSI):
@@ -338,14 +335,13 @@ class YouTubeTUI:
             if not self.results or self.selected_idx >= len(self.results):
                 return
             self.is_playing = True
-            url = self.results[self.selected_idx].get("url")
+            item = self.results[self.selected_idx]
+            url = item.get("url")
             
             def do_play():
                 try:
-                    play_video(url, self.video_mode, self.no_audio, self.chars_charset, self.quality)
+                    play_video(url, self.video_mode, self.no_audio, self.chars_charset, self.quality, title=item.get("title"))
                 finally:
-                    self.is_playing = False
-                    self.last_playback_end_time = time.time()
                     flush_stdin()
                     
             run_in_terminal(do_play)

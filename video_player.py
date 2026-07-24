@@ -493,6 +493,10 @@ class ASCIIVideoPlayer:
         cursor.show()
 
     def run(self):
+        title = getattr(self.args, 'title', None)
+        if title:
+            print(f"\033[2J\033[H\033[1;36m{title}\033[0m\n")
+        print("\033[93mLoading stream...\033[0m")
         if not self.load_video():
             return False
 
