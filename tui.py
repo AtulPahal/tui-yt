@@ -591,8 +591,15 @@ class YouTubeTUI:
 
 
 def main():
+    if not sys.stdin.isatty():
+        print("tui-yt requires a real terminal. Run from your terminal, not from a pipe or redirect.", file=sys.stderr)
+        sys.exit(1)
     tui = YouTubeTUI()
-    tui.app.run()
+    try:
+        tui.app.run()
+    except OSError as e:
+        print(f"tui-yt: terminal error: {e}", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":
