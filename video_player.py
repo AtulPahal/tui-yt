@@ -499,19 +499,23 @@ class ASCIIVideoPlayer:
         print("\033[93mLoading stream...\033[0m")
         if not self.load_video():
             return False
-
         self.audio_player = detect_player()
         if not self.audio_player and not self.no_audio:
             print("\033[93mWarning: No audio player found (tried ffplay, mpv, afplay)."
                   " Install ffmpeg (provides ffplay) or mpv for audio.\033[0m")
         self.controls.start()
         self._start_processing_threads(start_frame=0)
-
         if self.video_cap:
             w = int(self.video_cap.get(cv2.CAP_PROP_FRAME_WIDTH))
             h = int(self.video_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
             if w > 0 and h > 0:
                 self._render_size(w, h)
-
+        # Wait for first frame before clearing loading text
+        while (len(self._all_ascii_frames) == 0
+               or self._all_ascii_frames[0] is None):
+            if self.stopped:
+                return False
+            time.sleep(0.01)
+        print("\033[2J\033[H", end="", flush=True)
         self._play_loop()
         return True
