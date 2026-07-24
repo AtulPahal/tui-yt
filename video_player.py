@@ -95,10 +95,9 @@ class ASCIIVideoPlayer:
             self._reader = Thread(target=self._read_frames, daemon=True)
             self._reader.start()
             self._converters = []
-            for _ in range(3):
-                t = Thread(target=self._convert_frames, daemon=True)
-                t.start()
-                self._converters.append(t)
+            t = Thread(target=self._convert_frames, daemon=True)
+            t.start()
+            self._converters.append(t)
 
     def load_video(self):
         vid = self.args.vid
@@ -406,6 +405,7 @@ class ASCIIVideoPlayer:
                             self.frames_converted = prune_to
         finally:
             self._finish()
+
     def _show_frame(self, lines, idx, status=None):
         if self._term_refresh <= 0:
             self._term_cols, self._term_lines = shutil.get_terminal_size((80, 24))
@@ -423,14 +423,17 @@ class ASCIIVideoPlayer:
         out = ["\033[H"]
         out.append("\n" * pad_top)
 
-        top_border = f"\033[90m┌{'─' * (cols - 2)}┐\033[0m"
-        out.append(top_border + "\n")
+        # Build cached borders — only recompute on width change
+        if getattr(self, '_border_cache_cols', None) != cols:
+            self._border_cache_cols = cols
+            self._top_border_cache = f"\033[90m┌{'─' * (cols - 2)}┐\033[0m"
+            self._bot_border_cache = f"\033[90m└{'─' * (cols - 2)}┘\033[0m"
+        out.append(self._top_border_cache + "\n")
 
         for line in lines:
             out.append(f"\033[90m│\033[0m{margin}{line}\033[90m│\033[0m\n")
 
-        bot_border = f"\033[90m└{'─' * (cols - 2)}┘\033[0m"
-        out.append(bot_border + "\n")
+        out.append(self._bot_border_cache + "\n")
 
         mode_label = "VIDEO" if self.watching_video else "COLOUR"
         status_label = f" [{status}]" if status else ""
