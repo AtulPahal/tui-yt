@@ -265,7 +265,8 @@ class ASCIIVideoPlayer:
                     if idx >= len(self._all_ascii_frames):
                         self._all_ascii_frames.extend([None] * (idx + 1 - len(self._all_ascii_frames)))
                     self._all_ascii_frames[idx] = lines
-                    while self.frames_converted < len(self._all_ascii_frames) and self._all_ascii_frames[self.frames_converted] is not None:
+                    while (self.frames_converted < len(self._all_ascii_frames)
+                           and self._all_ascii_frames[self.frames_converted] is not None):
                         self.frames_converted += 1
             except Exception:
                 empty = [""]
@@ -320,7 +321,9 @@ class ASCIIVideoPlayer:
                         if audio_was_paused:
                             pause_audio(self.audio_process)
 
-                    self.begin_time = time.monotonic() - (current_time / self.speed) if self.speed > 0 else time.monotonic()
+                    self.begin_time = (time.monotonic()
+                                       - (current_time / self.speed)
+                                       if self.speed > 0 else time.monotonic())
                     if pause_start is not None:
                         pause_start = time.monotonic()
                     self._last_shown_idx = idx
@@ -460,7 +463,11 @@ class ASCIIVideoPlayer:
         mode_label = "VIDEO" if self.watching_video else "COLOUR"
         status_label = f" [{status}]" if status else ""
         sp_label = f" [{self.speed:.2f}x]" if self.speed != 1.0 else ""
-        info_str = f" tui-yt | Mode: {mode_label}{sp_label}{status_label} | Frame {idx+1}/{self.total_frames} | Space: pause, Q: quit, Arrows: seek "
+        info_str = (
+            f" tui-yt | Mode: {mode_label}{sp_label}{status_label}"
+            f" | Frame {idx+1}/{self.total_frames}"
+            f" | Space: pause, Q: quit, Arrows: seek "
+        )
         info_str = info_str[:cols-4]
         w(f"\033[90m {info_str}\033[0m\033[J")
         sys.stdout.flush()

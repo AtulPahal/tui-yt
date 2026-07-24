@@ -187,7 +187,9 @@ def flush_stdin():
                     break
     except Exception:
         pass
-def play_video(url: str, video_mode: bool, no_audio: bool, chars_charset: str, quality: str = "720p", title: str | None = None):
+def play_video(url: str, video_mode: bool, no_audio: bool,
+               chars_charset: str, quality: str = "720p",
+               title: str | None = None):
     from video_player import ASCIIVideoPlayer
     args = MockArgs(url, video_mode, no_audio, chars_charset, quality=quality)
     if title:
@@ -262,14 +264,18 @@ class YouTubeTUI:
         self.header_window = Window(
             content=FormattedTextControl([
                 ("class:header", " === YouTube TUI Video Player ===\n"),
-                ("class:instruction", " Use Tab to switch focus. Arrow keys/j/k to navigate results. Enter to play. [d] Download\n")
+                ("class:instruction",
+                 " Use Tab to switch focus. Arrow keys/j/k to navigate results."
+                 " Enter to play. [d] Download\n"),
             ]),
             height=2,
         )
 
         self.footer_window = Window(
             content=FormattedTextControl([
-                ("class:footer", " [v] Mode | [a] Audio | [s] Quality | [d] Download | In-Player: [Space] Pause | [L/R] Seek | [>/<] Speed ")
+                ("class:footer",
+                 " [v] Mode | [a] Audio | [s] Quality | [d] Download"
+                 " | In-Player: [Space] Pause | [L/R] Seek | [>/<] Speed "),
             ]),
             height=1,
         )
@@ -342,7 +348,9 @@ class YouTubeTUI:
             
             def do_play():
                 try:
-                    play_video(url, self.video_mode, self.no_audio, self.chars_charset, self.quality, title=item.get("title"))
+                    play_video(url, self.video_mode, self.no_audio,
+                               self.chars_charset, self.quality,
+                               title=item.get("title"))
                 finally:
                     self.is_playing = False
                     self.last_playback_end_time = time.time()
@@ -521,7 +529,8 @@ class YouTubeTUI:
             self.thumbnail_cache[video_id] = img
             
             # Update only if selection hasn't changed
-            if self.results and self.selected_idx < len(self.results) and self.results[self.selected_idx].get("id") == video_id:
+            if (self.results and self.selected_idx < len(self.results)
+                and self.results[self.selected_idx].get("id") == video_id):
                 ansi = render_image_to_ansi(img, max_w, max_h)
                 self.current_thumbnail_ansi = ThumbnailANSI(ansi)
                 self.app.invalidate()
@@ -548,7 +557,8 @@ class YouTubeTUI:
             if len(title) > 40:
                 title = title[:37] + "..."
                 
-            line = f" {'>' if i == self.selected_idx else ' '} {i+1:2d}. {title:<40} {dur_str:<8} - {item.get('channel')}\n"
+            line = (f" {'>' if i == self.selected_idx else ' '} {i+1:2d}."
+                    f" {title:<40} {dur_str:<8} - {item.get('channel')}\n")
             
             if i == self.selected_idx:
                 formatted.append(("class:selected", line))

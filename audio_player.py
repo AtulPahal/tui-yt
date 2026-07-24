@@ -68,7 +68,8 @@ def play_audio(path, player, start_time=0, speed=1.0):
                 # No streaming-capable player found (afplay/aplay/paplay can't stream URLs)
                 return None
 
-        user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+        ua = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+              "(KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
 
         if player == "afplay":
             return subprocess.Popen(
@@ -81,7 +82,7 @@ def play_audio(path, player, start_time=0, speed=1.0):
             if speed != 1.0:
                 cmd.extend([f"--speed={speed:.2f}"])
             if is_url:
-                cmd.append(f"--user-agent={user_agent}")
+                cmd.append(f"--user-agent={ua}")
             if start_time > 0:
                 cmd.extend(["--start", str(start_time)])
             cmd.append(path)
@@ -95,7 +96,7 @@ def play_audio(path, player, start_time=0, speed=1.0):
             if speed != 1.0:
                 cmd.extend(["-speed", f"{speed:.2f}"])
             if is_url:
-                cmd.extend(["-headers", f"User-Agent: {user_agent}\r\n"])
+                cmd.extend(["-headers", f"User-Agent: {ua}\r\n"])
             if start_time > 0:
                 cmd.extend(["-ss", str(start_time)])
             cmd.append(path)

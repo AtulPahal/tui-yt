@@ -316,7 +316,9 @@ async def main():
     print(f"Results size after live fetch failure: {len(tui.results)} items")
     print(f"Status message: '{tui.status_message}'")
     assert len(tui.results) == 0, "Expected stale results to be cleared on live fetch failure"
-    assert "Could not fetch details" in tui.status_message or "Error" in tui.status_message, "Expected error status message to be shown"
+    msg = tui.status_message
+    assert ("Could not fetch details" in msg or "Error" in msg), \
+        "Expected error status message to be shown"
     print("Live network-based fetch failure error handling verified successfully.")
     
     
@@ -336,7 +338,8 @@ async def main():
     thumbnail_loaded = False
     for _ in range(30):
         await asyncio.sleep(0.2)
-        if tui.current_thumbnail_ansi.value != "No video selected." and tui.current_thumbnail_ansi.value != "Loading preview...":
+        val = tui.current_thumbnail_ansi.value
+        if val != "No video selected." and val != "Loading preview...":
             thumbnail_loaded = True
             break
             
