@@ -16,3 +16,13 @@ dependencies = [
 
 [project.scripts]
 tui-yt = "tui:main"
+[tool.setuptools]
+py-modules = [
+    "ascii_convert",
+    "audio_player",
+    "colours",
+    "playback_controls",
+    "tui",
+    "video_player",
+    "yt_saver",
+]
