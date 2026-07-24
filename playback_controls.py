@@ -41,7 +41,7 @@ class PlaybackControls:
             except AttributeError:
                 k = key
 
-            if k == " " or k in ("k", "K"):
+            if k == " " or k in ("k", "K") or k == keyboard.Key.space:
                 self._paused = not self._paused
             elif k in ("q", "Q"):
                 self._quit_flag = True
