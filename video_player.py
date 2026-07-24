@@ -425,7 +425,7 @@ class ASCIIVideoPlayer:
         fh = len(lines)
         fw = _visible_length(lines[0]) if fh > 0 else 0
 
-        pad_top = max((lns - fh - 2) // 2, 0)
+        pad_top = max((lns - fh - 3) // 2, 0)
         pad_left = max((cols - fw - 2) // 2, 0)
 
         w = sys.stdout.write
