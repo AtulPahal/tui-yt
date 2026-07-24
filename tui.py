@@ -342,12 +342,11 @@ class YouTubeTUI:
                 try:
                     play_video(url, self.video_mode, self.no_audio, self.chars_charset, self.quality, title=item.get("title"))
                 finally:
+                    self.is_playing = False
+                    self.last_playback_end_time = time.time()
                     flush_stdin()
                     
             run_in_terminal(do_play)
-            self.last_playback_end_time = time.time()
-            flush_stdin()
-
         # Toggle quality
         @self.kb.add("s", filter=has_focus(self.results_window))
         def _(event):
