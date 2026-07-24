@@ -74,6 +74,7 @@ class ASCIIVideoPlayer:
         self.audio_process = None
         self.audio_player = None
         self.controls = PlaybackControls()
+        self._reader = None
         self._last_shown_item = None
         self._last_shown_idx = 0
         self._aspect_ratio_cache = {}
@@ -513,7 +514,7 @@ class ASCIIVideoPlayer:
         # Wait for first frame before clearing loading text
         while (len(self._all_ascii_frames) == 0
                or self._all_ascii_frames[0] is None):
-            if self.stopped:
+            if self.stopped or self.all_frames_read:
                 return False
             time.sleep(0.01)
         print("\033[2J\033[H", end="", flush=True)
