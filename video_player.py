@@ -34,6 +34,10 @@ _ANSI_STRIP_RE = re.compile(r'\x1b\[[0-9;]*m')
 def _visible_length(s):
     return len(_ANSI_STRIP_RE.sub('', s))
 
+# Per-frame rendering constants
+LINE_BLEFT = "\033[90m│\033[0m"
+LINE_BRIGHT = "\033[90m│\033[0m"
+
 class ASCIIVideoPlayer:
     def __init__(self, args):
         self.args = args
@@ -73,11 +77,13 @@ class ASCIIVideoPlayer:
         self._last_shown_item = None
         self._last_shown_idx = 0
         self._aspect_ratio_cache = {}
-
-        self._reader = None
-        self._converters = []
-        self._term_cols, self._term_lines = 80, 24
+        self._border_cache_cols = -1
+        self._pad_top_cache_len = -1
+        self._margin_cache_pad = -1
+        self._pad_top_cache = ""
+        self._margin_cache = ""
         self._term_refresh = 0
+        self._term_cols, self._term_lines = 80, 24
 
     def _start_processing_threads(self, start_frame=0):
         with self.lock:
@@ -421,32 +427,36 @@ class ASCIIVideoPlayer:
 
         pad_top = max((lns - fh - 2) // 2, 0)
         pad_left = max((cols - fw - 2) // 2, 0)
-        margin = " " * pad_left
 
-        # Write frame directly to stdout buffer — avoids "".join() big string allocation
         w = sys.stdout.write
         w("\033[H")
-        w("\n" * pad_top)
 
-        # Build cached borders — only recompute on width change
-        if getattr(self, '_border_cache_cols', None) != cols:
+        # Cache pad_top string — recompute only on height change
+        if self._border_cache_cols != cols:
             self._border_cache_cols = cols
-            self._top_border_cache = f"\033[90m┌{'─' * (cols - 2)}┐\033[0m"
-            self._bot_border_cache = f"\033[90m└{'─' * (cols - 2)}┘\033[0m"
-        w(self._top_border_cache)
-        w("\n")
+            self._top_border_cache = f"\033[90m┌{'─' * (cols - 2)}┐\033[0m\n"
+            self._bot_border_cache = f"\033[90m└{'─' * (cols - 2)}┘\033[0m\n"
+            self._pad_top_cache = ""
+            self._margin_cache = ""
+        if self._pad_top_cache_len != pad_top:
+            self._pad_top_cache_len = pad_top
+            self._pad_top_cache = "\n" * pad_top
+        if self._margin_cache_pad != pad_left:
+            self._margin_cache_pad = pad_left
+            self._margin_cache = " " * pad_left
 
-        bleft = f"\033[90m│\033[0m"
-        bright = f"\033[90m│\033[0m"
+        w(self._pad_top_cache)
+        w(self._top_border_cache)
+
+        margin = self._margin_cache
         for line in lines:
-            w(bleft)
+            w(LINE_BLEFT)
             w(margin)
             w(line)
-            w(bright)
+            w(LINE_BRIGHT)
             w("\n")
 
         w(self._bot_border_cache)
-        w("\n")
 
         mode_label = "VIDEO" if self.watching_video else "COLOUR"
         status_label = f" [{status}]" if status else ""
