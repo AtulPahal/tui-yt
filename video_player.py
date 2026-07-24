@@ -472,7 +472,7 @@ class ASCIIVideoPlayer:
             f" | Frame {idx+1}/{self.total_frames}"
             f" | Space: pause, Q: quit, Arrows: seek "
         )
-        info_str = info_str[:cols-4]
+        info_str = info_str[:max(cols-4, 0)]
         w(f"\033[90m {info_str}\033[0m\033[J")
         sys.stdout.flush()
 
