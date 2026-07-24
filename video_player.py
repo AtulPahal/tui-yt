@@ -412,7 +412,7 @@ class ASCIIVideoPlayer:
                         prune_to = max(0, min(idx, len(self._all_ascii_frames) - 600))
                         if prune_to > 0:
                             self._all_ascii_frames[:prune_to] = [None] * prune_to
-                            self.frames_converted = prune_to
+                            self.frames_converted = max(self.frames_converted, prune_to)
         finally:
             self._finish()
 
