@@ -10,6 +10,9 @@ import signal
 import sys
 
 
+# Cached streaming-capable player for URL streams (avoids shutil.which() per seek)
+_URL_PLAYER_CACHE = None
+
 def detect_player():
     """
     Detect the best available audio player for the current platform.
@@ -52,12 +55,17 @@ def play_audio(path, player, start_time=0, speed=1.0):
         return None
 
     try:
-        user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
         if is_url:
-            if shutil.which("mpv"):
-                player = "mpv"
-            elif shutil.which("ffplay"):
-                player = "ffplay"
+            global _URL_PLAYER_CACHE
+            if _URL_PLAYER_CACHE is None:
+                if shutil.which("mpv"):
+                    _URL_PLAYER_CACHE = "mpv"
+                elif shutil.which("ffplay"):
+                    _URL_PLAYER_CACHE = "ffplay"
+            if _URL_PLAYER_CACHE:
+                player = _URL_PLAYER_CACHE
+
+        user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
 
         if player == "afplay":
             return subprocess.Popen(
