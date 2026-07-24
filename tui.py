@@ -11,7 +11,6 @@ import select
 import urllib.request
 from PIL import Image, ImageEnhance
 
-# Native video_player module
 
 # Handle third-party imports gracefully
 try:

@@ -101,11 +101,7 @@ class ASCIIVideoPlayer:
                 except queue.Empty:
                     break
             self._reader = Thread(target=self._read_frames, daemon=True)
-            self._reader.start()
-            self._converters = []
-            t = Thread(target=self._convert_frames, daemon=True)
-            t.start()
-            self._converters.append(t)
+            Thread(target=self._convert_frames, daemon=True).start()
 
     def load_video(self):
         vid = self.args.vid
