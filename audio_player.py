@@ -1,20 +1,11 @@
 """
-Cross-platform audio playback for video-to-ascii.
-Supports macOS (afplay), Linux (ffplay / aplay / paplay), and Windows (ffplay).
-
-Usage:
-    from audio import detect_player, play_audio, stop_audio
-
-    player = detect_player()
-    if player:
-        proc = play_audio("video.mp4", player=player)
-        # ... later ...
-        stop_audio(proc)
+Cross-platform audio player and live stream audio engine for tui-yt.
+Supports mpv, ffplay, afplay, aplay, and paplay with network streaming headers.
 """
 
 from __future__ import print_function
-
 import os
+import shutil
 import subprocess
 import sys
 
@@ -22,10 +13,7 @@ import sys
 def detect_player():
     """
     Detect the best available audio player for the current platform.
-
-    Returns a player name string (suitable for ``play_audio``) or *None*.
     """
-    # Prioritize ffplay or mpv on all platforms for seeking and streaming support
     for candidate in ("ffplay", "mpv"):
         try:
             cmd = [candidate, "-version"] if sys.platform == "win32" else [candidate, "--version"]
@@ -39,10 +27,8 @@ def detect_player():
             pass
 
     if sys.platform == "darwin":
-        # afplay is built into macOS — no dependency needed
         return "afplay"
 
-    # Check *nix players
     for candidate in ("aplay", "paplay"):
         try:
             subprocess.run(
@@ -59,21 +45,15 @@ def detect_player():
 
 def play_audio(path, player, start_time=0):
     """
-    Play an audio file at the given start offset (in seconds) and return the
-    ``subprocess.Popen`` handle.
-
-    Returns *None* if playback could not be started.
+    Play an audio file or live stream URL and return the subprocess.Popen handle.
     """
     is_url = isinstance(path, str) and (path.startswith("http://") or path.startswith("https://"))
     if not path or (not is_url and not os.path.isfile(path)):
         return None
 
     try:
-        # afplay/aplay/paplay cannot stream HTTP URLs directly — use ffplay or mpv for HTTP streams
-        # afplay/aplay/paplay cannot stream HTTP URLs directly — use mpv or ffplay for HTTP streams
         user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
         if is_url:
-            import shutil
             if shutil.which("mpv"):
                 player = "mpv"
             elif shutil.which("ffplay"):
@@ -168,4 +148,3 @@ def resume_audio(process):
         except Exception:
             pass
     return False
-

@@ -1,3 +1,7 @@
+"""
+YouTube stream extractor and download helper for tui-yt.
+"""
+
 from __future__ import unicode_literals
 
 try:
@@ -12,13 +16,14 @@ except ImportError:
 
 
 QUALITY_MAP = {
-    "1080p": "best[height<=1080][ext=mp4]/best[height<=1080]/best",
-    "720p": "best[height<=720][ext=mp4]/best[height<=720]/best",
-    "480p": "best[height<=480][ext=mp4]/best[height<=480]/best",
-    "360p": "best[height<=360][ext=mp4]/best[height<=360]/best",
-    "240p": "best[height<=240][ext=mp4]/best[height<=240]/best",
+    "1080p": "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080]/best",
+    "720p": "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720]/best",
+    "480p": "bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/best[height<=480]/best",
+    "360p": "bestvideo[height<=360][ext=mp4]+bestaudio[ext=m4a]/best[height<=360]/best",
+    "240p": "bestvideo[height<=240][ext=mp4]/best[height<=240]/best",
     "best": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
 }
+
 
 def get_stream_info(url, quality="720p"):
     if not HAS_YTDL:
@@ -70,10 +75,10 @@ def get_stream_info(url, quality="720p"):
             print(f"Error fetching live stream info: {e}")
             return "error", "error", 0, 0, 0
 
+
 def save_file(url, outtmpl=None, quality="720p"):
     if not HAS_YTDL:
-        print("Error: Missing dependency 'yt-dlp' for downloading YouTube videos. "
-              "Install it with: uv pip install yt-dlp")
+        print("Error: Missing dependency 'yt-dlp' for downloading YouTube videos.")
         return "error", 0, 0, 0
 
     if outtmpl is None:

@@ -1,11 +1,10 @@
 """
-Interactive keyboard controls for video-to-ascii playback.
-Provides pause (Space), quit (Q), and seek (Left/Right arrows).
+Interactive keyboard controls for tui-yt video playback.
+Provides pause (Space), quit (Q), seek (Left/Right arrows), and speed control (>/<).
 Uses pynput for cross-platform keyboard listening.
 """
 
 from __future__ import print_function
-
 from threading import Lock
 
 try:
@@ -35,10 +34,8 @@ class PlaybackControls:
         self._lock = Lock()
         self._listener = None
 
-    # --- pynput callback (called from listener thread) ---
-
     def on_press(self, key):
-        """Handle a keypress.  Registered as pynput callback."""
+        """Handle a keypress. Registered as pynput callback."""
         with self._lock:
             try:
                 k = key.char
@@ -59,7 +56,6 @@ class PlaybackControls:
                 self._speed_delta -= 0.25
             elif k in ("0", "r", "R"):
                 self._speed_reset = True
-    # --- lifecycle ---
 
     def start(self):
         """Begin listening for keyboard input."""
@@ -78,8 +74,6 @@ class PlaybackControls:
                 self._listener.stop()
             except Exception:
                 pass
-
-    # --- thread-safe state queries ---
 
     def is_paused(self):
         with self._lock:

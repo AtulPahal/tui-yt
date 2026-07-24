@@ -1,19 +1,11 @@
 """
-ASCII conversion module for video-to-ascii.
-Converts PIL images to ASCII art with ANSI color codes.
-
-Usage:
-    from ascii_convert import convert_frame, list_charsets
-
-    lines = convert_frame(pil_image, charset="standard", video_mode=False)
-    for row in lines:
-        print(row)
+ASCII conversion module for tui-yt.
+Converts PIL images and video frames to ASCII art with 24-bit true-color ANSI escape sequences.
 """
 
 from __future__ import print_function
 import numpy as np
 from PIL import ImageEnhance
-
 from sty import fg, bg
 
 # Static Bayer 4x4 matrix for ordered dithering
@@ -24,8 +16,8 @@ BAYER_4X4 = np.array([
     [15, 7, 13, 5]
 ], dtype=np.float32)
 BAYER_NORM = (BAYER_4X4 / 16.0) - 0.5
+
 # Character sets for colour mode (foreground-coloured characters on default bg)
-# Keys are brightness thresholds, values are the character(s) to draw.
 CHARSETS = {
     "standard": {
         25: "  ",
@@ -54,8 +46,6 @@ CHARSETS = {
     },
 }
 
-# Character set for "video" mode (background-coloured blocks + fixed foreground).
-# Each entry is (display_chars, foreground_style).
 VIDEO_CHARSET = {
     50: ("  ", fg.white),
     70: ("..", fg.li_grey),
@@ -71,9 +61,6 @@ CHARSET_DESCRIPTIONS = {
     "minimal": "4-level single-character ramp",
 }
 
-# ---------------------------------------------------------------------------
-# Precompute Lookup Tables (LUTs) at the module level
-# ---------------------------------------------------------------------------
 
 def _precompute_lut(char_map):
     thresholds = sorted(char_map.keys())
@@ -86,6 +73,7 @@ def _precompute_lut(char_map):
                 break
         lut.append(chosen)
     return lut
+
 
 def _precompute_video_lut(video_charset):
     thresholds = sorted(video_charset.keys())
@@ -101,6 +89,7 @@ def _precompute_video_lut(video_charset):
         lut_char.append(chosen_char)
     return lut_fg, lut_char
 
+
 LUT_STANDARD = _precompute_lut(CHARSETS["standard"])
 LUT_COMPACT = _precompute_lut(CHARSETS["compact"])
 LUT_MINIMAL = _precompute_lut(CHARSETS["minimal"])
@@ -112,6 +101,7 @@ LUTS = {
     "minimal": LUT_MINIMAL,
 }
 
+
 def list_charsets():
     """Return dict of {name: description} for available colour-mode charsets."""
     return dict(CHARSET_DESCRIPTIONS)
@@ -121,21 +111,7 @@ def convert_frame(pil_image, charset="standard", video_mode=False,
                   contrast=1.0, brightness=1.0, dither="none"):
     """
     Convert a PIL image to a list of ASCII strings with ANSI colour codes.
-
-    Args:
-        pil_image: PIL Image object (RGB mode).
-        charset: Name of the character set to use (only applies in colour mode).
-        video_mode: If True, uses background-coloured blocks (more vibrant,
-                    matches the original --video_mode flag). If False, uses
-                    foreground-coloured characters on the terminal background.
-        contrast: Contrast adjustment factor (1.0 is original).
-        brightness: Brightness adjustment factor (1.0 is original).
-        dither: Dithering method ("none", "ordered", "floyd").
-
-    Returns:
-        list[str]: Each element is one row of ASCII art including ANSI codes.
     """
-    # 1. Apply image enhancements if requested
     if contrast != 1.0:
         enhancer = ImageEnhance.Contrast(pil_image)
         pil_image = enhancer.enhance(contrast)
@@ -146,14 +122,11 @@ def convert_frame(pil_image, charset="standard", video_mode=False,
     pixels = np.array(pil_image, dtype=np.uint8)
     height, width = pixels.shape[:2]
 
-    # 2. Standard luminance grayscale formula: (R * 299 + G * 587 + B * 114) // 1000
-    # Ensure np.uint32 is used for intermediate sums to prevent overflow.
     r_chan = pixels[:, :, 0].astype(np.uint32)
     g_chan = pixels[:, :, 1].astype(np.uint32)
     b_chan = pixels[:, :, 2].astype(np.uint32)
     brightness_arr = (r_chan * 299 + g_chan * 587 + b_chan * 114) // 1000
 
-    # 3. Dithering
     if dither == "ordered":
         brightness_f = brightness_arr.astype(np.float32)
         tile_y = (height + 3) // 4
@@ -168,35 +141,30 @@ def convert_frame(pil_image, charset="standard", video_mode=False,
             charset_name = charset if charset in CHARSETS else "standard"
             thresholds = sorted(CHARSETS[charset_name].keys())
 
-        # Precompute closest threshold mapping
         closest_threshold_lut = np.array([
             min(thresholds, key=lambda t: abs(i - t))
             for i in range(256)
         ], dtype=np.float32)
 
-        # Pad to avoid boundary checks: +1 row at bottom, +1 col at left and right
         padded = np.zeros((height + 1, width + 2), dtype=np.float32)
         padded[:height, 1:width+1] = brightness_arr.astype(np.float32)
 
         for y in range(height):
             for x in range(1, width + 1):
                 v = padded[y, x]
-                # Clip input to [0.0, 255.0]
                 v_clipped = 0.0 if v < 0.0 else (255.0 if v > 255.0 else v)
                 idx = int(v_clipped + 0.5)
                 closest = closest_threshold_lut[idx]
                 err = v - closest
 
                 padded[y, x] = closest
-                # Diffuse error to neighbors
-                padded[y, x + 1]     += err * 0.4375    # 7/16
-                padded[y + 1, x - 1] += err * 0.1875    # 3/16
-                padded[y + 1, x]     += err * 0.3125    # 5/16
-                padded[y + 1, x + 1] += err * 0.0625    # 1/16
+                padded[y, x + 1]     += err * 0.4375
+                padded[y + 1, x - 1] += err * 0.1875
+                padded[y + 1, x]     += err * 0.3125
+                padded[y + 1, x + 1] += err * 0.0625
 
         brightness_arr = padded[:height, 1:width+1].astype(np.uint8)
 
-    # Convert to Python native lists/tuples for fast traversal inside list comprehensions
     pixels_list = pixels.tolist()
     brightness_list = brightness_arr.tolist()
 

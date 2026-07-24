@@ -9,8 +9,7 @@ import threading
 import urllib.request
 from PIL import Image, ImageEnhance
 
-# Ensure the video-to-ascii module can be imported
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "video-to-ascii")))
+# Native video_player module
 
 # Handle third-party imports gracefully
 try:
@@ -34,10 +33,10 @@ except ImportError:
     sys.exit(1)
 
 try:
-    from video_render import ASCIIVideoPlayer
+    from video_player import ASCIIVideoPlayer
     import cursor
 except ImportError as e:
-    print(f"Error importing modules from sibling video-to-ascii repo: {e}")
+    print(f"Error importing internal video_player module: {e}")
     sys.exit(1)
 
 
