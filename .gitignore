@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+downloads/
+.DS_Store
+*.egg-info/
+dist/
+build/
+video-to-ascii/__pycache__/
+video-to-ascii/tests/__pycache__/

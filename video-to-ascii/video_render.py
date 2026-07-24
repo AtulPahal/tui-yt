@@ -84,6 +84,10 @@ def parse_args():
                         help="Override output height in character rows")
     parser.add_argument("--speed", type=float, default=1.0,
                         help="Playback speed multiplier (e.g. 0.5 = half speed, 2.0 = double)")
+    parser.add_argument("--quality", choices=["1080p", "720p", "480p", "360p", "240p", "best"], default="720p",
+                        help="Video quality format preference (default: 720p)")
+    parser.add_argument("--download-first", action="store_true",
+                        help="Download video to disk before playing instead of live streaming")
     parser.add_argument("--version", action="store_true",
                         help="Show version number and exit")
     parser.add_argument("--no-intro", action="store_true",
@@ -122,6 +126,8 @@ class ASCIIVideoPlayer:
         self.charset = args.chars
         self.no_audio = args.no_audio
         self.speed = args.speed if args.speed > 0 else 1.0
+        self.quality = getattr(args, "quality", "720p")
+        self.download_first = getattr(args, "download_first", False)
         self.loop_count = args.loop
         self.no_intro = args.no_intro
         self.override_w = args.width
@@ -224,10 +230,25 @@ class ASCIIVideoPlayer:
                 raise VideoNotYoutubeLink(vid)
             print(f"{Colours.FAIL}Error: not a valid file path or YouTube URL{Colours.END}")
             return False
-        # Download to a unique temp path so we never collide with user files
+        # Default: Stream video live without downloading to disk first!
+        if not self.download_first:
+            video_url, audio_url, fps, total_frames, duration = ydls.get_stream_info(vid, quality=self.quality)
+            if video_url != "error" and video_url:
+                self.framerate = fps if fps > 0 else 30.0
+                self.total_frames = total_frames
+                self.duration = duration
+                self.audio_path = audio_url
+                self.video_cap = cv2.VideoCapture(video_url)
+                if self.video_cap.isOpened():
+                    print(f"{Colours.GREEN}Streaming live: {vid} ({self.quality})  "
+                          f"{self.total_frames} frames @ {self.framerate:.1f} fps, "
+                          f"{self.duration:.1f}s{Colours.END}")
+                    return True
+
+        # Download fallback or explicit --download-first
         temp_download = os.path.join(tempfile.mkdtemp(prefix="ytdl_"), "video.mp4")
         video_location, self.framerate, self.total_frames, self.duration = ydls.save_file(
-            vid, outtmpl=temp_download
+            vid, outtmpl=temp_download, quality=self.quality
         )
         if video_location == "error":
             return False
@@ -417,6 +438,16 @@ class ASCIIVideoPlayer:
                     if pause_start is not None:
                         pause_start = now
 
+                # --- Dynamic Speed Adjustment ---
+                speed_info = self.controls.consume_speed_change()
+                if isinstance(speed_info, (tuple, list)) and len(speed_info) == 2:
+                    speed_delta, speed_reset = speed_info
+                    if speed_reset:
+                        self.speed = 1.0
+                        delay = 1.0 / (self.framerate * self.speed) if self.framerate > 0 else 1.0 / 30.0
+                    elif speed_delta != 0.0:
+                        self.speed = max(0.25, min(4.0, self.speed + speed_delta))
+                        delay = 1.0 / (self.framerate * self.speed) if self.framerate > 0 else 1.0 / (30.0 * self.speed)
                 # --- Pause ---
                 if self.controls.is_paused():
                     if pause_start is None:

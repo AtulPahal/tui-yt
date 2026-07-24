@@ -196,7 +196,7 @@ class TestAudio(unittest.TestCase):
         proc = audio.play_audio("test.mp4", "ffplay")
         self.assertEqual(proc, mock_process)
         mock_popen.assert_called_with(
-            ["ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet", "test.mp4"],
+            ["ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet", "-volume", "100", "test.mp4"],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL
         )
@@ -211,7 +211,7 @@ class TestAudio(unittest.TestCase):
         proc = audio.play_audio("test.mp4", "ffplay", start_time=15)
         self.assertEqual(proc, mock_process)
         mock_popen.assert_called_with(
-            ["ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet", "-ss", "15", "test.mp4"],
+            ["ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet", "-volume", "100", "-ss", "15", "test.mp4"],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL
         )

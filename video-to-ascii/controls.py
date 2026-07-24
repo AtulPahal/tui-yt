@@ -29,6 +29,8 @@ class PlaybackControls:
     def __init__(self):
         self._paused = False
         self._seek_offset = 0       # frames to skip (positive = forward)
+        self._speed_delta = 0.0     # accumulated speed adjustment
+        self._speed_reset = False   # flag to reset speed to 1.0
         self._quit_flag = False
         self._lock = Lock()
         self._listener = None
@@ -51,7 +53,12 @@ class PlaybackControls:
                 self._seek_offset += self.SEEK_STEP_SECONDS
             elif k == keyboard.Key.left or k in ("j", "J"):
                 self._seek_offset -= self.SEEK_STEP_SECONDS
-
+            elif k in (">", ".", "]", "+"):
+                self._speed_delta += 0.25
+            elif k in ("<", ",", "[", "-"):
+                self._speed_delta -= 0.25
+            elif k in ("0", "r", "R"):
+                self._speed_reset = True
     # --- lifecycle ---
 
     def start(self):
@@ -88,3 +95,12 @@ class PlaybackControls:
             offset = self._seek_offset
             self._seek_offset = 0
         return offset
+
+    def consume_speed_change(self):
+        """Return (delta, reset_flag) and reset accumulated values."""
+        with self._lock:
+            delta = self._speed_delta
+            reset = self._speed_reset
+            self._speed_delta = 0.0
+            self._speed_reset = False
+        return delta, reset

@@ -58,12 +58,14 @@ class TestVideoRender(unittest.TestCase):
 
     @patch("sys.argv", ["video_render.py", "https://www.youtube.com/watch?v=dQw4w9WgXcQ"])
     @patch("os.path.isfile")
+    @patch("youtubedl_saver.get_stream_info")
     @patch("youtubedl_saver.save_file")
     @patch("tempfile.mkdtemp")
     @patch("cv2.VideoCapture")
-    def test_load_video_youtube(self, mock_vc, mock_mkdtemp, mock_save_file, mock_isfile):
+    def test_load_video_youtube(self, mock_vc, mock_mkdtemp, mock_save_file, mock_get_stream_info, mock_isfile):
         mock_isfile.return_value = False
         mock_mkdtemp.return_value = "/tmp/ytdl_xyz"
+        mock_get_stream_info.return_value = ("http://stream.url", "http://audio.url", 30.0, 300, 10.0)
         mock_save_file.return_value = ("/tmp/ytdl_xyz/video.mp4", 30.0, 300, 10.0)
         
         mock_cap = MagicMock()
@@ -78,8 +80,7 @@ class TestVideoRender(unittest.TestCase):
         self.assertEqual(player.framerate, 30.0)
         self.assertEqual(player.total_frames, 300)
         self.assertEqual(player.duration, 10.0)
-        self.assertEqual(player.audio_path, "/tmp/ytdl_xyz/video.mp4")
-        self.assertEqual(player._owned_video_path, "/tmp/ytdl_xyz/video.mp4")
+        self.assertEqual(player.audio_path, "http://audio.url")
 
     @patch("sys.argv", ["video_render.py", "video.mp4", "--width", "40", "--height", "20"])
     def test_render_size_override(self):

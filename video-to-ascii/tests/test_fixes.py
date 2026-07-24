@@ -1,14 +1,17 @@
 import unittest
 import sys
+import os
 import subprocess
 from ascii_html import xterm_256_to_rgb, _build_html
+
+REPO_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 class TestFixes(unittest.TestCase):
     # Bug #1: VideoNotYoutubeLink exception handling
     def test_video_not_youtube_link_handled(self):
         res = subprocess.run(
             ["uv", "run", "python3", "video_render.py", "https://google.com"],
-            capture_output=True, text=True, timeout=10
+            capture_output=True, text=True, timeout=10, cwd=REPO_DIR
         )
         self.assertEqual(res.returncode, 1)
         self.assertNotIn("Traceback", res.stderr)
@@ -18,10 +21,9 @@ class TestFixes(unittest.TestCase):
     def test_live_render_threads_zero_handled(self):
         res = subprocess.run(
             ["uv", "run", "python3", "live_render.py", "--threads=0"],
-            capture_output=True, text=True, timeout=5
+            capture_output=True, text=True, timeout=5, cwd=REPO_DIR
         )
         self.assertEqual(res.returncode, 1)
-
     # Bug #3: xterm_256_to_rgb clamping
     def test_xterm_256_bounds(self):
         self.assertEqual(xterm_256_to_rgb(-1), (0, 0, 0))

@@ -25,16 +25,16 @@ def detect_player():
 
     Returns a player name string (suitable for ``play_audio``) or *None*.
     """
-    # Prioritize ffplay on all platforms for seeking support
-    for candidate in ("ffplay",):
+    # Prioritize ffplay or mpv on all platforms for seeking and streaming support
+    for candidate in ("ffplay", "mpv"):
         try:
-            cmd = ["ffplay", "-version"] if sys.platform == "win32" else ["ffplay", "--version"]
+            cmd = [candidate, "-version"] if sys.platform == "win32" else [candidate, "--version"]
             subprocess.run(
                 cmd,
                 capture_output=True,
                 timeout=2,
             )
-            return "ffplay"
+            return candidate
         except (FileNotFoundError, subprocess.TimeoutExpired):
             pass
 
@@ -64,18 +64,43 @@ def play_audio(path, player, start_time=0):
 
     Returns *None* if playback could not be started.
     """
-    if not path or not os.path.isfile(path):
+    is_url = isinstance(path, str) and (path.startswith("http://") or path.startswith("https://"))
+    if not path or (not is_url and not os.path.isfile(path)):
         return None
 
     try:
+        # afplay/aplay/paplay cannot stream HTTP URLs directly — use ffplay or mpv for HTTP streams
+        # afplay/aplay/paplay cannot stream HTTP URLs directly — use mpv or ffplay for HTTP streams
+        user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+        if is_url:
+            import shutil
+            if shutil.which("mpv"):
+                player = "mpv"
+            elif shutil.which("ffplay"):
+                player = "ffplay"
+
         if player == "afplay":
             return subprocess.Popen(
                 ["afplay", path, "-q", "1"],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )
+        if player == "mpv":
+            cmd = ["mpv", "--no-video", "--really-quiet", "--volume=100"]
+            if is_url:
+                cmd.append(f"--user-agent={user_agent}")
+            if start_time > 0:
+                cmd.extend(["--start", str(start_time)])
+            cmd.append(path)
+            return subprocess.Popen(
+                cmd,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
         if player == "ffplay":
-            cmd = ["ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet"]
+            cmd = ["ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet", "-volume", "100"]
+            if is_url:
+                cmd.extend(["-headers", f"User-Agent: {user_agent}\r\n"])
             if start_time > 0:
                 cmd.extend(["-ss", str(start_time)])
             cmd.append(path)
