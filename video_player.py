@@ -238,6 +238,10 @@ class ASCIIVideoPlayer:
                         pass
         except KeyboardInterrupt:
             self.stopped = True
+        except Exception:
+            with self.lock:
+                self.all_frames_read = True
+            self.stopped = True
 
     def _convert_frames(self):
         while not self.stopped:
@@ -523,8 +527,8 @@ class ASCIIVideoPlayer:
         while (len(self._all_ascii_frames) == 0
                or self._all_ascii_frames[0] is None):
             if self.stopped or self.all_frames_read:
+                self._finish()
                 return False
-            time.sleep(0.01)
         print("\033[2J\033[H", end="", flush=True)
         self._play_loop()
         return True
