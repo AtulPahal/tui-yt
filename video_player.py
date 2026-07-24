@@ -322,7 +322,7 @@ class ASCIIVideoPlayer:
                         if audio_was_paused:
                             pause_audio(self.audio_process)
 
-                    self.begin_time = time.monotonic() - current_time
+                    self.begin_time = time.monotonic() - (current_time / self.speed) if self.speed > 0 else time.monotonic()
                     if pause_start is not None:
                         pause_start = time.monotonic()
                     self._last_shown_idx = idx
