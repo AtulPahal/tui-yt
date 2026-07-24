@@ -2,24 +2,18 @@
 Video renderer and player engine for tui-yt.
 """
 
-import argparse
-import atexit
 import datetime
 import os
 import queue
 import re
 import shutil
-import signal
-import sys
 import tempfile
 import time
 from threading import Lock, Thread
 
 import cursor
 import cv2
-from PIL import Image
 
-from ascii_convert import convert_frame, list_charsets
 from audio_player import detect_player, play_audio, stop_audio, pause_audio, resume_audio
 from colours import Colours
 from playback_controls import PlaybackControls
@@ -40,44 +34,6 @@ _ANSI_STRIP_RE = re.compile(r'\x1b\[[0-9;]*m')
 def _visible_length(s):
     return len(_ANSI_STRIP_RE.sub('', s))
 
-
-def parse_args():
-    parser = argparse.ArgumentParser(
-        description="Render a YouTube video or local file as coloured ASCII art in the terminal."
-    )
-    parser.add_argument("vid", nargs="?", help="YouTube URL or path to a local video file")
-    parser.add_argument("--framerate", type=int, default=30, help="Target framerate (default: 30)")
-    parser.add_argument("--buffer", type=float, default=0, help="Pre-buffer amount, 0-1 (default: 0)")
-    parser.add_argument("--video-mode", dest="video_mode", action="store_true", help="Use background-coloured blocks")
-    parser.add_argument("--chars", default="standard", help="Character set for colour mode")
-    parser.add_argument("--list-charsets", action="store_true", help="List available character sets")
-    parser.add_argument("--export-html", metavar="FILE", help="Save ASCII animation to an HTML file")
-    parser.add_argument("--no-audio", action="store_true", help="Disable audio playback")
-    parser.add_argument("--width", type=int, default=0, help="Override output width")
-    parser.add_argument("--height", type=int, default=0, help="Override output height")
-    parser.add_argument("--speed", type=float, default=1.0, help="Playback speed multiplier")
-    parser.add_argument("--quality", choices=["1080p", "720p", "480p", "360p", "240p", "best"], default="720p")
-    parser.add_argument("--download-first", action="store_true", help="Download video to disk before playing")
-    parser.add_argument("--version", action="store_true", help="Show version number and exit")
-    parser.add_argument("--no-intro", action="store_true", help="Skip the 3-2-1 countdown")
-    parser.add_argument("--loop", nargs="?", const=-1, default=0, type=int, help="Loop playback")
-    parser.add_argument("--contrast", type=float, default=1.0, help="Contrast enhancement factor")
-    parser.add_argument("--brightness", type=float, default=1.0, help="Brightness enhancement factor")
-    parser.add_argument("--dither", choices=["none", "ordered", "floyd"], default="none", help="Dither method")
-    return parser.parse_args()
-
-
-def cleanup():
-    try:
-        cursor.show()
-    except BrokenPipeError:
-        pass
-
-
-def _signal_handler(signum, frame):
-    raise KeyboardInterrupt()
-
-
 class ASCIIVideoPlayer:
     def __init__(self, args):
         self.args = args
@@ -87,7 +43,6 @@ class ASCIIVideoPlayer:
         self.speed = args.speed if args.speed > 0 else 1.0
         self.quality = getattr(args, "quality", "720p")
         self.download_first = getattr(args, "download_first", False)
-        self.loop_count = args.loop
         self.no_intro = args.no_intro
         self.override_w = args.width
         self.override_h = args.height
@@ -97,6 +52,7 @@ class ASCIIVideoPlayer:
         self.duration = 0
         self.video_cap = None
         self.audio_path = None
+        self._owned_video_dir = None
         self._owned_video_path = None
 
         self.export_html = args.export_html
@@ -107,25 +63,24 @@ class ASCIIVideoPlayer:
         self.frames_written = 0
         self.frames_converted = 0
         self.all_frames_read = False
-        self.playback_started = False
 
         self.queue = {}
         self.lock = Lock()
         self.frame_queue = queue.Queue(maxsize=120)
 
         self.begin_time = None
-        self.frame_begin_time = None
         self.audio_process = None
         self.audio_player = None
         self.controls = PlaybackControls()
-        self._last_terminal_size = (0, 0)
         self._last_shown_item = None
         self._last_shown_idx = 0
+        self._aspect_ratio_cache = {}
         self.times_played = 0
 
         self._reader = None
         self._converters = []
-        self._player = None
+        self._term_cols, self._term_lines = 80, 24
+        self._term_refresh = 0
 
     def _start_processing_threads(self, start_frame=0):
         with self.lock:
@@ -144,9 +99,8 @@ class ASCIIVideoPlayer:
             self._reader = Thread(target=self._read_frames, daemon=True)
             self._reader.start()
             self._converters = []
-            nconv = 3
-            for i in range(nconv):
-                t = Thread(target=self._convert_frames, args=(i, nconv), daemon=True)
+            for i in range(3):
+                t = Thread(target=self._convert_frames, args=(i,), daemon=True)
                 t.start()
                 self._converters.append(t)
 
@@ -188,16 +142,22 @@ class ASCIIVideoPlayer:
                 if self.video_cap.isOpened():
                     return True
 
-        temp_download = os.path.join(tempfile.mkdtemp(prefix="ytdl_"), "video.mp4")
+        temp_dir = tempfile.mkdtemp(prefix="ytdl_")
+        temp_download = os.path.join(temp_dir, "video.mp4")
         video_location, self.framerate, self.total_frames, self.duration = ydls.save_file(
             vid, outtmpl=temp_download, quality=self.quality
         )
         if video_location == "error":
+            try:
+                os.rmdir(temp_dir)
+            except Exception:
+                pass
             return False
         if self.framerate <= 0:
             self.framerate = 30.0
         self.audio_path = video_location
         self._owned_video_path = video_location
+        self._owned_video_dir = temp_dir
         self.video_cap = cv2.VideoCapture(video_location)
         return True
 
@@ -206,8 +166,6 @@ class ASCIIVideoPlayer:
             return self.override_w, self.override_h
 
         cols, lines = shutil.get_terminal_size((80, 24))
-        if not hasattr(self, '_aspect_ratio_cache'):
-            self._aspect_ratio_cache = {}
         cache_key = (cols, lines, frame_w, frame_h, self.watching_video, self.charset)
         if cache_key in self._aspect_ratio_cache:
             return self._aspect_ratio_cache[cache_key]
@@ -247,7 +205,10 @@ class ASCIIVideoPlayer:
                                 self.frame_queue.get_nowait()
                             except queue.Empty:
                                 break
-
+                if self.video_cap is None:
+                    with self.lock:
+                        self.all_frames_read = True
+                    break
                 ok, frame = self.video_cap.read()
                 if not ok:
                     with self.lock:
@@ -275,7 +236,7 @@ class ASCIIVideoPlayer:
         except KeyboardInterrupt:
             self.stopped = True
 
-    def _convert_frames(self, tid, nthreads):
+    def _convert_frames(self, tid):
         while not self.stopped:
             try:
                 idx, frame = self.frame_queue.get(timeout=0.1)
@@ -290,33 +251,31 @@ class ASCIIVideoPlayer:
                     continue
 
             try:
-                pil_img = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-                lines = convert_frame(pil_img, charset=self.charset,
+                rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                lines = convert_frame(rgb_frame, charset=self.charset,
                                       video_mode=self.watching_video,
                                       contrast=self.args.contrast,
                                       brightness=self.args.brightness,
                                       dither=self.args.dither)
-                ascii_str = "\n".join(lines)
                 with self.lock:
-                    self.queue[idx] = ascii_str
+                    self.queue[idx] = lines
                     if idx >= len(self._all_ascii_frames):
                         self._all_ascii_frames.extend([None] * (idx + 1 - len(self._all_ascii_frames)))
-                    self._all_ascii_frames[idx] = ascii_str
+                    self._all_ascii_frames[idx] = lines
                     while self.frames_converted < len(self._all_ascii_frames) and self._all_ascii_frames[self.frames_converted] is not None:
                         self.frames_converted += 1
             except Exception as e:
+                empty = [""]
                 with self.lock:
-                    self.queue[idx] = ""
+                    self.queue[idx] = empty
                     if idx >= len(self._all_ascii_frames):
                         self._all_ascii_frames.extend([None] * (idx + 1 - len(self._all_ascii_frames)))
-                    self._all_ascii_frames[idx] = ""
+                    self._all_ascii_frames[idx] = empty
 
     def _play_loop(self):
-        delay = 1.0 / (self.framerate * self.speed)
         idx = 0
         audio_was_paused = False
         pause_start = None
-
         try:
             while not self.stopped:
                 if self.controls.should_quit():
@@ -328,8 +287,7 @@ class ASCIIVideoPlayer:
                     seek_frames = int(seek * self.framerate) if self.framerate > 0 else int(seek * 30)
                     idx = max(0, min(idx + seek_frames, self.total_frames - 1))
                     with self.lock:
-                        for stale in range(idx):
-                            self.queue.pop(stale, None)
+                        self.queue.clear()
 
                     item_ready = False
                     if idx < len(self._all_ascii_frames):
@@ -342,30 +300,43 @@ class ASCIIVideoPlayer:
                         if reader_alive:
                             with self.lock:
                                 self.seek_request_frame = idx
+                            # Reader may have died between check and set
+                            with self.lock:
+                                if not self._reader or not self._reader.is_alive():
+                                    self._start_processing_threads(start_frame=idx)
                         else:
                             self._start_processing_threads(start_frame=idx)
 
                     stop_audio(self.audio_process)
                     current_time = idx / self.framerate if self.framerate > 0 else 0
-                    self.audio_process = play_audio(self.audio_path, self.audio_player, start_time=current_time)
+                    self.audio_process = play_audio(self.audio_path, self.audio_player, start_time=current_time, speed=self.speed)
                     if audio_was_paused:
                         pause_audio(self.audio_process)
 
                     now = datetime.datetime.now()
                     self.begin_time = now - datetime.timedelta(seconds=current_time)
-                    self.frame_begin_time = now
                     if pause_start is not None:
                         pause_start = now
+                    self._last_shown_idx = idx
 
                 speed_info = self.controls.consume_speed_change()
                 if isinstance(speed_info, (tuple, list)) and len(speed_info) == 2:
                     speed_delta, speed_reset = speed_info
+                    old_speed = self.speed
                     if speed_reset:
                         self.speed = 1.0
-                        delay = 1.0 / (self.framerate * self.speed) if self.framerate > 0 else 1.0 / 30.0
                     elif speed_delta != 0.0:
                         self.speed = max(0.25, min(4.0, self.speed + speed_delta))
-                        delay = 1.0 / (self.framerate * self.speed) if self.framerate > 0 else 1.0 / (30.0 * self.speed)
+                    if speed_delta != 0.0 or speed_reset:
+                        # Restart audio with new speed and adjust begin_time to keep pacing continuous
+                        if not self.no_audio and self.audio_process and not audio_was_paused:
+                            stop_audio(self.audio_process)
+                            current_time = idx / self.framerate if self.framerate > 0 else 0
+                            self.audio_process = play_audio(self.audio_path, self.audio_player, start_time=current_time, speed=self.speed)
+                        if self.begin_time is not None:
+                            current_pos_secs = idx / (self.framerate * old_speed) if self.framerate > 0 else 0
+                            new_current_pos_secs = idx / (self.framerate * self.speed) if self.framerate > 0 else 0
+                            self.begin_time = self.begin_time + datetime.timedelta(seconds=current_pos_secs - new_current_pos_secs)
 
                 if self.controls.is_paused():
                     if pause_start is None:
@@ -374,16 +345,15 @@ class ASCIIVideoPlayer:
                         if not pause_audio(self.audio_process):
                             stop_audio(self.audio_process)
                         audio_was_paused = True
-                    cols, _ = shutil.get_terminal_size((80, 24))
                     if self._last_shown_item is not None:
-                        self._show_frame(self._last_shown_item, self._last_shown_idx, datetime.datetime.now(), status="PAUSED")
+                        self._show_frame(self._last_shown_item, self._last_shown_idx, status="PAUSED")
                     time.sleep(0.05)
                     continue
 
                 if audio_was_paused:
                     if not resume_audio(self.audio_process):
-                        current_time = idx / self.framerate if self.framerate > 0 else 0
-                        self.audio_process = play_audio(self.audio_path, self.audio_player, start_time=current_time)
+                        resume_time = idx / self.framerate if self.framerate > 0 else 0
+                        self.audio_process = play_audio(self.audio_path, self.audio_player, start_time=resume_time, speed=self.speed)
                     audio_was_paused = False
                     if pause_start is not None:
                         pause_duration = datetime.datetime.now() - pause_start
@@ -411,40 +381,52 @@ class ASCIIVideoPlayer:
                 now = datetime.datetime.now()
                 if self.begin_time is None:
                     self.begin_time = now
-                    self.frame_begin_time = now
                     if not self.no_audio and not self.audio_process:
                         self._start_audio()
 
-                target_time = self.begin_time + datetime.timedelta(seconds=(idx / (self.framerate * self.speed)))
+                fps = self.framerate if self.framerate > 0 else 30
+                target_time = self.begin_time + datetime.timedelta(seconds=(idx / (fps * self.speed)))
                 sleep_dur = (target_time - now).total_seconds()
                 if sleep_dur > 0:
                     time.sleep(sleep_dur)
-                    now = datetime.datetime.now()
-
-                self._show_frame(item, idx, now)
+                self._show_frame(item, idx)
                 self._last_shown_item = item
                 self._last_shown_idx = idx
                 idx += 1
+
+                # Check reader thread health - if dead, stop playback
+                if self._reader and not self._reader.is_alive() and not self.all_frames_read:
+                    self.stopped = True
+                    break
+
+                # Prune converted frame cache to prevent unbounded memory growth
+                if len(self._all_ascii_frames) > 900:
+                    with self.lock:
+                        prune_to = len(self._all_ascii_frames) - 600
+                        self._all_ascii_frames[:prune_to] = [None] * prune_to
         finally:
             self._finish()
+    def _show_frame(self, lines, idx, status=None):
+        if self._term_refresh <= 0:
+            self._term_cols, self._term_lines = shutil.get_terminal_size((80, 24))
+            self._term_refresh = 30
+        else:
+            self._term_refresh -= 1
+        cols, lns = self._term_cols, self._term_lines
+        fh = len(lines)
+        fw = _visible_length(lines[0]) if fh > 0 else 0
 
-    def _show_frame(self, frame_str, idx, now, status=None):
-        cols, lines = shutil.get_terminal_size((80, 24))
-        frame_lines = frame_str.split("\n")
-        fh = len(frame_lines)
-        fw = _visible_length(frame_lines[0]) if fh > 0 else 0
-
-        pad_top = max((lines - fh - 2) // 2, 0)
+        pad_top = max((lns - fh - 2) // 2, 0)
         pad_left = max((cols - fw) // 2, 0)
         margin = " " * pad_left
 
-        out = ["\033[H\033[2J"]
+        out = ["\033[H"]
         out.append("\n" * pad_top)
 
         top_border = f"\033[90m┌{'─' * (cols - 2)}┐\033[0m"
         out.append(top_border + "\n")
 
-        for line in frame_lines:
+        for line in lines:
             out.append(f"\033[90m│\033[0m{margin}{line}\033[90m│\033[0m\n")
 
         bot_border = f"\033[90m└{'─' * (cols - 2)}┘\033[0m"
@@ -455,8 +437,7 @@ class ASCIIVideoPlayer:
         sp_label = f" [{self.speed:.2f}x]" if self.speed != 1.0 else ""
         info_str = f" tui-yt | Mode: {mode_label}{sp_label}{status_label} | Frame {idx+1}/{self.total_frames} | Space: pause, Q: quit, Arrows: seek "
         info_str = info_str[:cols-4]
-        out.append(f"\033[90m {info_str}\033[0m")
-
+        out.append(f"\033[90m {info_str}\033[0m\033[J")
         print("".join(out), end="", flush=True)
 
     def _start_audio(self):
@@ -464,7 +445,7 @@ class ASCIIVideoPlayer:
             return
         if not self.audio_player:
             return
-        self.audio_process = play_audio(self.audio_path, self.audio_player)
+        self.audio_process = play_audio(self.audio_path, self.audio_player, speed=self.speed)
 
     def _finish(self):
         stop_audio(self.audio_process)
@@ -477,24 +458,25 @@ class ASCIIVideoPlayer:
                 os.remove(self._owned_video_path)
             except Exception:
                 pass
+        if self._owned_video_dir and os.path.isdir(self._owned_video_dir):
+            try:
+                os.rmdir(self._owned_video_dir)
+            except Exception:
+                pass
         cursor.show()
 
     def run(self):
         if not self.load_video():
             return False
 
-        if not self.no_intro and not self.no_audio:
-            pass
-
         self.audio_player = detect_player()
         self.controls.start()
         self._start_processing_threads(start_frame=0)
 
         if self.video_cap:
-            ok, frame = self.video_cap.read()
-            if ok:
-                h, w = frame.shape[:2]
+            w = int(self.video_cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            h = int(self.video_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            if w > 0 and h > 0:
                 self._render_size(w, h)
-                self.video_cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
 
         return self._play_loop()

@@ -3,7 +3,6 @@ Cross-platform audio player and live stream audio engine for tui-yt.
 Supports mpv, ffplay, afplay, aplay, and paplay with network streaming headers.
 """
 
-from __future__ import print_function
 import os
 import shutil
 import subprocess
@@ -43,7 +42,7 @@ def detect_player():
     return None
 
 
-def play_audio(path, player, start_time=0):
+def play_audio(path, player, start_time=0, speed=1.0):
     """
     Play an audio file or live stream URL and return the subprocess.Popen handle.
     """
@@ -67,6 +66,8 @@ def play_audio(path, player, start_time=0):
             )
         if player == "mpv":
             cmd = ["mpv", "--no-video", "--really-quiet", "--volume=100"]
+            if speed != 1.0:
+                cmd.extend([f"--speed={speed:.2f}"])
             if is_url:
                 cmd.append(f"--user-agent={user_agent}")
             if start_time > 0:
@@ -79,6 +80,8 @@ def play_audio(path, player, start_time=0):
             )
         if player == "ffplay":
             cmd = ["ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet", "-volume", "100"]
+            if speed != 1.0:
+                cmd.extend(["-speed", f"{speed:.2f}"])
             if is_url:
                 cmd.extend(["-headers", f"User-Agent: {user_agent}\r\n"])
             if start_time > 0:

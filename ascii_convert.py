@@ -3,10 +3,10 @@ ASCII conversion module for tui-yt.
 Converts PIL images and video frames to ASCII art with 24-bit true-color ANSI escape sequences.
 """
 
-from __future__ import print_function
 import numpy as np
 from PIL import ImageEnhance
-from sty import fg, bg
+
+_FS_LUT_CACHE: dict[tuple, np.ndarray] = {}
 
 # Static Bayer 4x4 matrix for ordered dithering
 BAYER_4X4 = np.array([
@@ -107,19 +107,28 @@ def list_charsets():
     return dict(CHARSET_DESCRIPTIONS)
 
 
-def convert_frame(pil_image, charset="standard", video_mode=False,
+def convert_frame(image, charset="standard", video_mode=False,
                   contrast=1.0, brightness=1.0, dither="none"):
     """
-    Convert a PIL image to a list of ASCII strings with ANSI colour codes.
+    Convert a PIL Image or numpy RGB array to a list of ASCII strings with ANSI colour codes.
     """
-    if contrast != 1.0:
-        enhancer = ImageEnhance.Contrast(pil_image)
-        pil_image = enhancer.enhance(contrast)
-    if brightness != 1.0:
-        enhancer = ImageEnhance.Brightness(pil_image)
-        pil_image = enhancer.enhance(brightness)
+    if isinstance(image, np.ndarray):
+        pixels = image
+        if contrast != 1.0 or brightness != 1.0:
+            pixels = pixels.astype(np.float32)
+            if contrast != 1.0:
+                pixels = 128.0 + (pixels - 128.0) * contrast
+            if brightness != 1.0:
+                pixels = pixels + (brightness - 1.0) * 128.0
+            pixels = np.clip(pixels, 0, 255).astype(np.uint8)
+    else:
+        pil_image = image
+        if contrast != 1.0:
+            pil_image = ImageEnhance.Contrast(pil_image).enhance(contrast)
+        if brightness != 1.0:
+            pil_image = ImageEnhance.Brightness(pil_image).enhance(brightness)
+        pixels = np.array(pil_image, dtype=np.uint8)
 
-    pixels = np.array(pil_image, dtype=np.uint8)
     height, width = pixels.shape[:2]
 
     r_chan = pixels[:, :, 0].astype(np.uint32)
@@ -134,34 +143,48 @@ def convert_frame(pil_image, charset="standard", video_mode=False,
         tiled_bayer = np.tile(BAYER_NORM, (tile_y, tile_x))[:height, :width]
         brightness_f += tiled_bayer * 40.0
         brightness_arr = np.clip(brightness_f, 0.0, 255.0).astype(np.uint8)
+
     elif dither == "floyd":
         if video_mode:
             thresholds = sorted(VIDEO_CHARSET.keys())
+            lut_key = ("video",)
         else:
             charset_name = charset if charset in CHARSETS else "standard"
             thresholds = sorted(CHARSETS[charset_name].keys())
+            lut_key = ("colour", charset_name)
 
-        closest_threshold_lut = np.array([
-            min(thresholds, key=lambda t: abs(i - t))
-            for i in range(256)
-        ], dtype=np.float32)
+        cached = _FS_LUT_CACHE.get(lut_key)
+        if cached is not None:
+            closest_threshold_lut = cached
+        else:
+            closest_threshold_lut = np.array([
+                min(thresholds, key=lambda t: abs(i - t))
+                for i in range(256)
+            ], dtype=np.float32)
+            _FS_LUT_CACHE[lut_key] = closest_threshold_lut
 
         padded = np.zeros((height + 1, width + 2), dtype=np.float32)
         padded[:height, 1:width+1] = brightness_arr.astype(np.float32)
 
+        lut = closest_threshold_lut
         for y in range(height):
+            row = padded[y]
+            nrow = padded[y + 1]
             for x in range(1, width + 1):
-                v = padded[y, x]
-                v_clipped = 0.0 if v < 0.0 else (255.0 if v > 255.0 else v)
-                idx = int(v_clipped + 0.5)
-                closest = closest_threshold_lut[idx]
+                v = row[x]
+                if v <= 0.0:
+                    idx = 0
+                elif v >= 255.0:
+                    idx = 255
+                else:
+                    idx = int(v + 0.5)
+                closest = lut[idx]
                 err = v - closest
-
-                padded[y, x] = closest
-                padded[y, x + 1]     += err * 0.4375
-                padded[y + 1, x - 1] += err * 0.1875
-                padded[y + 1, x]     += err * 0.3125
-                padded[y + 1, x + 1] += err * 0.0625
+                row[x] = closest
+                row[x + 1]  += err * 0.4375
+                nrow[x - 1] += err * 0.1875
+                nrow[x]     += err * 0.3125
+                nrow[x + 1] += err * 0.0625
 
         brightness_arr = padded[:height, 1:width+1].astype(np.uint8)
 

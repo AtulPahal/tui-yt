@@ -4,7 +4,6 @@ Provides pause (Space), quit (Q), seek (Left/Right arrows), and speed control (>
 Uses pynput for cross-platform keyboard listening.
 """
 
-from __future__ import print_function
 from threading import Lock
 
 try:
