@@ -175,14 +175,17 @@ class MockArgs:
         self.dither = "none"
 
 def flush_stdin():
+    """Drain any pending input from stdin without blocking."""
     try:
-        if sys.platform != "win32":
-            while select.select([sys.stdin], [], [], 0)[0]:
-                sys.stdin.read(1)
-        else:
+        if sys.platform == "win32":
             import msvcrt
             while msvcrt.kbhit():
                 msvcrt.getch()
+        else:
+            while select.select([sys.stdin], [], [], 0)[0]:
+                chunk = sys.stdin.read(4096)
+                if not chunk:
+                    break
     except Exception:
         pass
 def play_video(url: str, video_mode: bool, no_audio: bool, chars_charset: str, quality: str = "720p", title: str | None = None):
