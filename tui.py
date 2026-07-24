@@ -7,6 +7,7 @@ import re
 import asyncio
 import threading
 import shutil
+import select
 import urllib.request
 from PIL import Image, ImageEnhance
 
@@ -179,7 +180,6 @@ class MockArgs:
 def flush_stdin():
     try:
         if sys.platform != "win32":
-            import select
             while select.select([sys.stdin], [], [], 0)[0]:
                 sys.stdin.read(1)
         else:

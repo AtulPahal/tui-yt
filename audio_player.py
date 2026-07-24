@@ -6,6 +6,7 @@ Supports mpv, ffplay, afplay, aplay, and paplay with network streaming headers.
 import os
 import shutil
 import subprocess
+import signal
 import sys
 
 
@@ -131,7 +132,6 @@ def pause_audio(process):
         return False
     if sys.platform != "win32":
         try:
-            import signal
             process.send_signal(signal.SIGSTOP)
             return True
         except Exception:
@@ -145,7 +145,6 @@ def resume_audio(process):
         return False
     if sys.platform != "win32":
         try:
-            import signal
             process.send_signal(signal.SIGCONT)
             return True
         except Exception:

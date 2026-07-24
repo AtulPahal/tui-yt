@@ -307,10 +307,15 @@ class ASCIIVideoPlayer:
                                     self._start_processing_threads(start_frame=idx)
                         else:
                             self._start_processing_threads(start_frame=idx)
+                    else:
+                        # Frame cached from prior read, but reader may have finished
+                        with self.lock:
+                            if self.all_frames_read and (not self._reader or not self._reader.is_alive()):
+                                self._start_processing_threads(start_frame=idx)
 
+                    current_time = idx / self.framerate if self.framerate > 0 else 0
                     if not self.no_audio:
                         stop_audio(self.audio_process)
-                        current_time = idx / self.framerate if self.framerate > 0 else 0
                         self.audio_process = play_audio(self.audio_path, self.audio_player, start_time=current_time, speed=self.speed)
                         if audio_was_paused:
                             pause_audio(self.audio_process)
