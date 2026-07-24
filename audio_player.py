@@ -64,6 +64,9 @@ def play_audio(path, player, start_time=0, speed=1.0):
                     _URL_PLAYER_CACHE = "ffplay"
             if _URL_PLAYER_CACHE:
                 player = _URL_PLAYER_CACHE
+            else:
+                # No streaming-capable player found (afplay/aplay/paplay can't stream URLs)
+                return None
 
         user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
 
