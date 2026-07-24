@@ -18,6 +18,7 @@ from audio_player import detect_player, play_audio, stop_audio, pause_audio, res
 from colours import Colours
 from playback_controls import PlaybackControls
 import yt_saver as ydls
+from ascii_convert import convert_frame
 
 
 class VideoNotYoutubeLink(Exception):

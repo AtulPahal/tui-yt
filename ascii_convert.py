@@ -5,6 +5,7 @@ Converts PIL images and video frames to ASCII art with 24-bit true-color ANSI es
 
 import numpy as np
 from PIL import ImageEnhance
+from sty import fg
 
 _FS_LUT_CACHE: dict[tuple, np.ndarray] = {}
 
