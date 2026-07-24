@@ -503,7 +503,10 @@ class ASCIIVideoPlayer:
         if title:
             print(f"\033[2J\033[H\033[1;36m{title}\033[0m\n")
         print("\033[93mLoading stream...\033[0m")
-        if not self.load_video():
+        try:
+            if not self.load_video():
+                return False
+        except VideoNotYoutubeLink:
             return False
         self.audio_player = detect_player()
         if not self.audio_player and not self.no_audio:
