@@ -6,6 +6,7 @@ import time
 import re
 import asyncio
 import threading
+import shutil
 import urllib.request
 from PIL import Image, ImageEnhance
 
@@ -336,6 +337,7 @@ class YouTubeTUI:
                 return
             if not self.results or self.selected_idx >= len(self.results):
                 return
+            self.is_playing = True
             url = self.results[self.selected_idx].get("url")
             
             def do_play():
@@ -345,7 +347,7 @@ class YouTubeTUI:
                     self.is_playing = False
                     self.last_playback_end_time = time.time()
                     flush_stdin()
-                
+                    
             run_in_terminal(do_play)
             self.last_playback_end_time = time.time()
             flush_stdin()
@@ -503,7 +505,6 @@ class YouTubeTUI:
             return
             
         # Dynamically calculate sizes based on terminal window dimensions
-        import shutil
         cols, lines = shutil.get_terminal_size()
         max_w = max(20, cols // 2 - 4)
         max_h = max(5, lines - 8)

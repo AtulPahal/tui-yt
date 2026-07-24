@@ -285,7 +285,8 @@ class ASCIIVideoPlayer:
                 seek = self.controls.consume_seek()
                 if seek != 0:
                     seek_frames = int(seek * self.framerate) if self.framerate > 0 else int(seek * 30)
-                    idx = max(0, min(idx + seek_frames, self.total_frames - 1))
+                    max_frame = max(0, self.total_frames - 1)
+                    idx = max(0, min(idx + seek_frames, max_frame))
                     with self.lock:
                         self.queue.clear()
 
@@ -307,11 +308,12 @@ class ASCIIVideoPlayer:
                         else:
                             self._start_processing_threads(start_frame=idx)
 
-                    stop_audio(self.audio_process)
-                    current_time = idx / self.framerate if self.framerate > 0 else 0
-                    self.audio_process = play_audio(self.audio_path, self.audio_player, start_time=current_time, speed=self.speed)
-                    if audio_was_paused:
-                        pause_audio(self.audio_process)
+                    if not self.no_audio:
+                        stop_audio(self.audio_process)
+                        current_time = idx / self.framerate if self.framerate > 0 else 0
+                        self.audio_process = play_audio(self.audio_path, self.audio_player, start_time=current_time, speed=self.speed)
+                        if audio_was_paused:
+                            pause_audio(self.audio_process)
 
                     now = datetime.datetime.now()
                     self.begin_time = now - datetime.timedelta(seconds=current_time)
