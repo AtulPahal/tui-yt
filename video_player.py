@@ -204,6 +204,7 @@ class ASCIIVideoPlayer:
                         if self.video_cap:
                             self.video_cap.set(cv2.CAP_PROP_POS_FRAMES, target)
                         self.frames_written = target
+                        self.frames_converted = max(self.frames_converted, target)
                         while not self.frame_queue.empty():
                             try:
                                 self.frame_queue.get_nowait()
