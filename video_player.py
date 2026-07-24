@@ -4,6 +4,7 @@ Video renderer and player engine for tui-yt.
 import os
 import queue
 import re
+import sys
 import shutil
 import tempfile
 import time
@@ -161,7 +162,7 @@ class ASCIIVideoPlayer:
         if self.override_w > 0 and self.override_h > 0:
             return self.override_w, self.override_h
 
-        cols, lines = shutil.get_terminal_size((80, 24))
+        cols, lines = self._term_cols, self._term_lines
         cache_key = (cols, lines, frame_w, frame_h, self.watching_video, self.charset)
         if cache_key in self._aspect_ratio_cache:
             return self._aspect_ratio_cache[cache_key]
@@ -384,8 +385,10 @@ class ASCIIVideoPlayer:
                 fps = self.framerate if self.framerate > 0 else 30
                 target = self.begin_time + idx / (fps * self.speed)
                 sleep_dur = target - now
-                if sleep_dur > 0:
-                    time.sleep(sleep_dur)
+                if sleep_dur > 0.004:
+                    time.sleep(sleep_dur - 0.004)
+                while time.monotonic() < target:
+                    pass
                 self._show_frame(item, idx)
                 self._last_shown_item = item
                 self._last_shown_idx = idx
@@ -420,28 +423,38 @@ class ASCIIVideoPlayer:
         pad_left = max((cols - fw - 2) // 2, 0)
         margin = " " * pad_left
 
-        out = ["\033[H"]
-        out.append("\n" * pad_top)
+        # Write frame directly to stdout buffer — avoids "".join() big string allocation
+        w = sys.stdout.write
+        w("\033[H")
+        w("\n" * pad_top)
 
         # Build cached borders — only recompute on width change
         if getattr(self, '_border_cache_cols', None) != cols:
             self._border_cache_cols = cols
             self._top_border_cache = f"\033[90m┌{'─' * (cols - 2)}┐\033[0m"
             self._bot_border_cache = f"\033[90m└{'─' * (cols - 2)}┘\033[0m"
-        out.append(self._top_border_cache + "\n")
+        w(self._top_border_cache)
+        w("\n")
 
+        bleft = f"\033[90m│\033[0m"
+        bright = f"\033[90m│\033[0m"
         for line in lines:
-            out.append(f"\033[90m│\033[0m{margin}{line}\033[90m│\033[0m\n")
+            w(bleft)
+            w(margin)
+            w(line)
+            w(bright)
+            w("\n")
 
-        out.append(self._bot_border_cache + "\n")
+        w(self._bot_border_cache)
+        w("\n")
 
         mode_label = "VIDEO" if self.watching_video else "COLOUR"
         status_label = f" [{status}]" if status else ""
         sp_label = f" [{self.speed:.2f}x]" if self.speed != 1.0 else ""
         info_str = f" tui-yt | Mode: {mode_label}{sp_label}{status_label} | Frame {idx+1}/{self.total_frames} | Space: pause, Q: quit, Arrows: seek "
         info_str = info_str[:cols-4]
-        out.append(f"\033[90m {info_str}\033[0m\033[J")
-        print("".join(out), end="", flush=True)
+        w(f"\033[90m {info_str}\033[0m\033[J")
+        sys.stdout.flush()
 
     def _start_audio(self):
         if self.no_audio or not self.audio_path:
