@@ -76,7 +76,6 @@ class ASCIIVideoPlayer:
         self._last_shown_item = None
         self._last_shown_idx = 0
         self._aspect_ratio_cache = {}
-        self.times_played = 0
 
         self._reader = None
         self._converters = []
@@ -100,8 +99,8 @@ class ASCIIVideoPlayer:
             self._reader = Thread(target=self._read_frames, daemon=True)
             self._reader.start()
             self._converters = []
-            for i in range(3):
-                t = Thread(target=self._convert_frames, args=(i,), daemon=True)
+            for _ in range(3):
+                t = Thread(target=self._convert_frames, daemon=True)
                 t.start()
                 self._converters.append(t)
 
@@ -111,6 +110,7 @@ class ASCIIVideoPlayer:
         if os.path.isfile(vid):
             cap = cv2.VideoCapture(vid)
             if not cap.isOpened():
+                cap.release()
                 print(f"{Colours.FAIL}Error: cannot open video file '{vid}'{Colours.END}")
                 return False
             self.framerate = cap.get(cv2.CAP_PROP_FPS) or float(self.args.framerate)
@@ -237,7 +237,7 @@ class ASCIIVideoPlayer:
         except KeyboardInterrupt:
             self.stopped = True
 
-    def _convert_frames(self, tid):
+    def _convert_frames(self):
         while not self.stopped:
             try:
                 idx, frame = self.frame_queue.get(timeout=0.1)
@@ -311,8 +311,9 @@ class ASCIIVideoPlayer:
                     else:
                         # Frame cached from prior read, but reader may have finished
                         with self.lock:
-                            if self.all_frames_read and (not self._reader or not self._reader.is_alive()):
-                                self._start_processing_threads(start_frame=idx)
+                            needs_restart = self.all_frames_read and (not self._reader or not self._reader.is_alive())
+                        if needs_restart:
+                            self._start_processing_threads(start_frame=idx)
 
                     current_time = idx / self.framerate if self.framerate > 0 else 0
                     if not self.no_audio:
@@ -381,7 +382,7 @@ class ASCIIVideoPlayer:
                 if item is None:
                     with self.lock:
                         all_read = self.all_frames_read
-                    if all_read and idx >= self.frames_converted:
+                    if all_read and idx >= (self.total_frames if self.total_frames > 0 else self.frames_converted):
                         break
                     time.sleep(0.005)
                     continue
@@ -410,8 +411,10 @@ class ASCIIVideoPlayer:
                 # Prune converted frame cache to prevent unbounded memory growth
                 if len(self._all_ascii_frames) > 900:
                     with self.lock:
-                        prune_to = len(self._all_ascii_frames) - 600
-                        self._all_ascii_frames[:prune_to] = [None] * prune_to
+                        prune_to = max(0, min(idx, len(self._all_ascii_frames) - 600))
+                        if prune_to > 0:
+                            self._all_ascii_frames[:prune_to] = [None] * prune_to
+                            self.frames_converted = prune_to
         finally:
             self._finish()
     def _show_frame(self, lines, idx, status=None):
@@ -425,7 +428,7 @@ class ASCIIVideoPlayer:
         fw = _visible_length(lines[0]) if fh > 0 else 0
 
         pad_top = max((lns - fh - 2) // 2, 0)
-        pad_left = max((cols - fw) // 2, 0)
+        pad_left = max((cols - fw - 2) // 2, 0)
         margin = " " * pad_left
 
         out = ["\033[H"]
@@ -456,6 +459,7 @@ class ASCIIVideoPlayer:
         self.audio_process = play_audio(self.audio_path, self.audio_player, speed=self.speed)
 
     def _finish(self):
+        self.stopped = True
         stop_audio(self.audio_process)
         self.controls.stop()
         if self.video_cap:
@@ -478,6 +482,9 @@ class ASCIIVideoPlayer:
             return False
 
         self.audio_player = detect_player()
+        if not self.audio_player and not self.no_audio:
+            print("\033[93mWarning: No audio player found (tried ffplay, mpv, afplay)."
+                  " Install ffmpeg (provides ffplay) or mpv for audio.\033[0m")
         self.controls.start()
         self._start_processing_threads(start_frame=0)
 
@@ -487,4 +494,5 @@ class ASCIIVideoPlayer:
             if w > 0 and h > 0:
                 self._render_size(w, h)
 
-        return self._play_loop()
+        self._play_loop()
+        return True

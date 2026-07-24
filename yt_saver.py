@@ -19,7 +19,7 @@ QUALITY_MAP = {
     "720p": "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720]/best",
     "480p": "bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/best[height<=480]/best",
     "360p": "bestvideo[height<=360][ext=mp4]+bestaudio[ext=m4a]/best[height<=360]/best",
-"240p": "bestvideo[height<=240][ext=mp4]+bestaudio[ext=m4a]/best[height<=240]/best",
+    "240p": "bestvideo[height<=240][ext=mp4]+bestaudio[ext=m4a]/best[height<=240]/best",
     "best": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
 }
 
