@@ -38,7 +38,7 @@ class PlaybackControls:
         with self._lock:
             try:
                 k = key.char
-            except AttributeError:
+            except Exception:
                 k = key
 
             if k == " " or k in ("k", "K") or k == keyboard.Key.space:

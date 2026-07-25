@@ -31,6 +31,7 @@ try:
     from prompt_toolkit.styles import Style
 except ImportError:
     print("Error: 'prompt-toolkit' is not installed. Run 'uv pip install prompt-toolkit'.")
+    sys.exit(1)
 try:
     import cursor
 except ImportError:
@@ -228,6 +229,7 @@ class YouTubeTUI:
         self.thumbnail_cache = {}
         self.is_playing = False
         self.last_playback_end_time = 0.0
+        self._search_generation = 0
 
         # Custom Styling
         self.style = Style.from_dict({
@@ -430,8 +432,12 @@ class YouTubeTUI:
         
         is_url = query_str.startswith("http://") or query_str.startswith("https://")
         
+        self._search_generation += 1
+        gen = self._search_generation
+        
         def bg_search():
             try:
+                new_results = None
                 if is_url:
                     self.status_message = "Fetching video details from URL..."
                     self.app.invalidate()
@@ -444,11 +450,11 @@ class YouTubeTUI:
                         info = ydl.extract_info(query_str, download=False)
                         
                         if not info:
-                            self.results = []
+                            new_results = []
                         elif "_type" in info and info["_type"] == "playlist":
                             entries = info.get("entries")
                             if entries is None:
-                                self.results = []
+                                new_results = []
                             else:
                                 search_results = []
                                 for entry in entries:
@@ -465,13 +471,13 @@ class YouTubeTUI:
                                         "channel": entry.get("uploader") or entry.get("channel", "Unknown"),
                                         "thumbnail": thumb_url,
                                     })
-                                self.results = search_results
+                                new_results = search_results
                         else:
                             # Single video
                             thumb_url = None
                             if info.get("thumbnails"):
                                 thumb_url = info.get("thumbnails")[0].get("url")
-                            self.results = [{
+                            new_results = [{
                                 "id": info.get("id"),
                                 "title": info.get("title") or "No Title",
                                 "url": f"https://www.youtube.com/watch?v={info.get('id')}",
@@ -479,19 +485,24 @@ class YouTubeTUI:
                                 "channel": info.get("uploader") or info.get("channel", "Unknown"),
                                 "thumbnail": thumb_url,
                             }]
-                    self.status_message = ""
                 else:
                     self.status_message = f"Searching YouTube for '{query_str}'..."
                     self.app.invalidate()
-                    self.results = search_youtube(query_str)
-                    self.status_message = ""
-                    
+                    new_results = search_youtube(query_str)
+                
+                # Commit results only if this search is still the latest
+                if gen != self._search_generation:
+                    return
+                self.results = new_results
+                self.status_message = ""
                 self.selected_idx = 0
                 if self.results:
                     self.update_thumbnail_preview()
                 else:
                     self.current_thumbnail_ansi = ThumbnailANSI("No video selected.")
             except Exception as e:
+                if gen != self._search_generation:
+                    return
                 self.results = []
                 self.current_thumbnail_ansi = ThumbnailANSI("No video selected.")
                 if is_url:
@@ -529,7 +540,8 @@ class YouTubeTUI:
         def bg_load():
             thumb_url = item.get("thumbnail")
             img = fetch_thumbnail_image(thumb_url)
-            self.thumbnail_cache[video_id] = img
+            if img is not None:
+                self.thumbnail_cache[video_id] = img
             
             # Update only if selection hasn't changed
             if (self.results and self.selected_idx < len(self.results)

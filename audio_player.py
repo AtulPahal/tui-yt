@@ -72,8 +72,11 @@ def play_audio(path, player, start_time=0, speed=1.0):
               "(KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
 
         if player == "afplay":
+            cmd = ["afplay", path, "-q", "1"]
+            if speed != 1.0:
+                cmd.extend(["-r", f"{speed:.2f}"])
             return subprocess.Popen(
-                ["afplay", path, "-q", "1"],
+                cmd,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )
@@ -94,7 +97,14 @@ def play_audio(path, player, start_time=0, speed=1.0):
         if player == "ffplay":
             cmd = ["ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet", "-volume", "100"]
             if speed != 1.0:
-                cmd.extend(["-speed", f"{speed:.2f}"])
+                # atempo only accepts [0.5, 100]; chain filters for slower speeds
+                tempo = speed
+                filters = []
+                while tempo < 0.5:
+                    filters.append("atempo=0.5")
+                    tempo /= 0.5
+                filters.append(f"atempo={tempo:.2f}")
+                cmd.extend(["-af", ",".join(filters)])
             if is_url:
                 cmd.extend(["-headers", f"User-Agent: {ua}\r\n"])
             if start_time > 0:
@@ -127,6 +137,12 @@ def stop_audio(process):
     if process is None:
         return
     try:
+        if sys.platform != "win32":
+            try:
+                # Wake a SIGSTOPped (paused) process so SIGTERM is delivered immediately
+                process.send_signal(signal.SIGCONT)
+            except Exception:
+                pass
         process.terminate()
         process.wait(timeout=3)
     except Exception:

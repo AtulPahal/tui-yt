@@ -1,6 +1,7 @@
 """
 Video renderer and player engine for tui-yt.
 """
+import math
 import os
 import queue
 import re
@@ -85,6 +86,7 @@ class ASCIIVideoPlayer:
         self._margin_cache = ""
         self._term_refresh = 0
         self._term_cols, self._term_lines = 80, 24
+        self._converter_gen = 0
 
     def _start_processing_threads(self, start_frame=0):
         with self.lock:
@@ -102,7 +104,8 @@ class ASCIIVideoPlayer:
                     break
             self._reader = Thread(target=self._read_frames, daemon=True)
             self._reader.start()
-            Thread(target=self._convert_frames, daemon=True).start()
+            self._converter_gen += 1
+            Thread(target=self._convert_frames, args=(self._converter_gen,), daemon=True).start()
 
     def load_video(self):
         vid = self.args.vid
@@ -114,10 +117,13 @@ class ASCIIVideoPlayer:
                 print(f"{Colours.FAIL}Error: cannot open video file '{vid}'{Colours.END}")
                 return False
             self.framerate = cap.get(cv2.CAP_PROP_FPS) or float(self.args.framerate)
-            if self.framerate <= 0:
-                self.framerate = 30.0
-            self.total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-            self.duration = self.total_frames / self.framerate if self.framerate > 0 else 0
+            if not math.isfinite(self.framerate) or self.framerate <= 0:
+                self.framerate = (float(self.args.framerate)
+                                  if math.isfinite(float(self.args.framerate))
+                                  else 30.0)
+            raw_total = cap.get(cv2.CAP_PROP_FRAME_COUNT)
+            self.total_frames = max(0, int(raw_total)) if math.isfinite(raw_total) else 0
+            self.duration = max(0.0, self.total_frames / self.framerate) if self.framerate > 0 else 0
             cap.release()
             self.video_cap = cv2.VideoCapture(vid)
             self.audio_path = vid
@@ -135,13 +141,16 @@ class ASCIIVideoPlayer:
         if not self.download_first:
             video_url, audio_url, fps, total_frames, duration = ydls.get_stream_info(vid, quality=self.quality)
             if video_url != "error" and video_url:
-                self.framerate = fps if fps > 0 else 30.0
-                self.total_frames = total_frames
-                self.duration = duration
+                self.framerate = fps if math.isfinite(fps) and fps > 0 else 30.0
+                self.total_frames = (max(0, int(total_frames))
+                                     if math.isfinite(total_frames) else 0)
+                self.duration = max(0.0, duration) if math.isfinite(duration) else 0.0
                 self.audio_path = audio_url
                 self.video_cap = cv2.VideoCapture(video_url)
                 if self.video_cap.isOpened():
                     return True
+                self.video_cap.release()
+                self.video_cap = None
 
         temp_dir = tempfile.mkdtemp(prefix="ytdl_")
         temp_download = os.path.join(temp_dir, "video.mp4")
@@ -154,8 +163,11 @@ class ASCIIVideoPlayer:
             except Exception:
                 pass
             return False
-        if self.framerate <= 0:
+        if self.framerate <= 0 or not math.isfinite(self.framerate):
             self.framerate = 30.0
+        self.total_frames = (max(0, int(self.total_frames))
+                             if math.isfinite(self.total_frames) else 0)
+        self.duration = max(0.0, self.duration) if math.isfinite(self.duration) else 0.0
         self.audio_path = video_location
         self._owned_video_path = video_location
         self._owned_video_dir = temp_dir
@@ -163,6 +175,8 @@ class ASCIIVideoPlayer:
         return True
 
     def _render_size(self, frame_w, frame_h):
+        frame_w = max(frame_w, 1)
+        frame_h = max(frame_h, 1)
         if self.override_w > 0 and self.override_h > 0:
             return self.override_w, self.override_h
 
@@ -243,11 +257,15 @@ class ASCIIVideoPlayer:
                 self.all_frames_read = True
             self.stopped = True
 
-    def _convert_frames(self):
+    def _convert_frames(self, gen):
         while not self.stopped:
+            if gen != self._converter_gen:
+                break
             try:
                 idx, frame = self.frame_queue.get(timeout=0.1)
             except queue.Empty:
+                if gen != self._converter_gen:
+                    break
                 with self.lock:
                     if self.all_frames_read and self.frame_queue.empty():
                         break
@@ -278,6 +296,9 @@ class ASCIIVideoPlayer:
                     if idx >= len(self._all_ascii_frames):
                         self._all_ascii_frames.extend([None] * (idx + 1 - len(self._all_ascii_frames)))
                     self._all_ascii_frames[idx] = empty
+                    while (self.frames_converted < len(self._all_ascii_frames)
+                           and self._all_ascii_frames[self.frames_converted] is not None):
+                        self.frames_converted += 1
 
     def _play_loop(self):
         idx = 0
@@ -331,6 +352,11 @@ class ASCIIVideoPlayer:
                     if pause_start is not None:
                         pause_start = time.monotonic()
                     self._last_shown_idx = idx
+                    with self.lock:
+                        if idx < len(self._all_ascii_frames):
+                            self._last_shown_item = self._all_ascii_frames[idx]
+                        else:
+                            self._last_shown_item = None
 
                 speed_info = self.controls.consume_speed_change()
                 if isinstance(speed_info, (tuple, list)) and len(speed_info) == 2:
@@ -346,6 +372,12 @@ class ASCIIVideoPlayer:
                             current_time = idx / self.framerate if self.framerate > 0 else 0
                             self.audio_process = play_audio(self.audio_path, self.audio_player,
                                                             start_time=current_time, speed=self.speed)
+                        elif not self.no_audio and self.audio_process and audio_was_paused:
+                            stop_audio(self.audio_process)
+                            current_time = idx / self.framerate if self.framerate > 0 else 0
+                            self.audio_process = play_audio(self.audio_path, self.audio_player,
+                                                            start_time=current_time, speed=self.speed)
+                            pause_audio(self.audio_process)
                         if self.begin_time is not None:
                             current_pos_secs = idx / (self.framerate * old_speed) if self.framerate > 0 else 0
                             new_current_pos_secs = idx / (self.framerate * self.speed) if self.framerate > 0 else 0
@@ -487,9 +519,18 @@ class ASCIIVideoPlayer:
         self.stopped = True
         stop_audio(self.audio_process)
         self.controls.stop()
+        if self._reader and self._reader.is_alive():
+            self._reader.join(timeout=2)
         if self.video_cap:
             self.video_cap.release()
             self.video_cap = None
+        if getattr(self, '_old_winch', None) is not None:
+            try:
+                import signal
+                signal.signal(signal.SIGWINCH, self._old_winch)
+            except Exception:
+                pass
+            self._old_winch = None
         if self._owned_video_path and os.path.isfile(self._owned_video_path):
             try:
                 os.remove(self._owned_video_path)
@@ -517,18 +558,29 @@ class ASCIIVideoPlayer:
             print("\033[93mWarning: No audio player found (tried ffplay, mpv, afplay)."
                   " Install ffmpeg (provides ffplay) or mpv for audio.\033[0m")
         self.controls.start()
-        self._start_processing_threads(start_frame=0)
+        try:
+            import signal
+            self._old_winch = signal.signal(
+                signal.SIGWINCH, lambda *a: setattr(self, 'terminal_resized', True))
+        except (ValueError, AttributeError, OSError):
+            self._old_winch = None
         if self.video_cap:
             w = int(self.video_cap.get(cv2.CAP_PROP_FRAME_WIDTH))
             h = int(self.video_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
             if w > 0 and h > 0:
                 self._render_size(w, h)
-        # Wait for first frame before clearing loading text
-        while (len(self._all_ascii_frames) == 0
-               or self._all_ascii_frames[0] is None):
-            if self.stopped or self.all_frames_read:
-                self._finish()
-                return False
+        try:
+            self._start_processing_threads(start_frame=0)
+            # Wait for first frame before clearing loading text
+            while (len(self._all_ascii_frames) == 0
+                   or self._all_ascii_frames[0] is None):
+                if self.stopped or self.all_frames_read:
+                    self._finish()
+                    return False
+                time.sleep(0.01)
+        except Exception:
+            self._finish()
+            return False
         print("\033[2J\033[H", end="", flush=True)
         self._play_loop()
         return True
